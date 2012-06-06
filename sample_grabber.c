@@ -27,15 +27,21 @@ char rx_buff[XFER_LEN];
 
 /* Mapping from raw sign-magnitude format to two's complement.
  * See MAX2769 Datasheet, Table 2. */
-char raw_value_mapping[8] = {1, 3, 5, 7, -1, -3, -5, -7};
-
-#define MBS 16
+char sign_mag_mapping[8] = {1, 3, 5, 7, -1, -3, -5, -7};
+char no_mapping[8] = {0, 1, 2, 3, 4, 5, 6, 7};
 
 int main()
 {
   int verbose = 2;
-  long bytes_wanted = MBS*1000*1000;
+  int disable_mapping = 0;
+  long bytes_wanted = 16*1000*1000;
   char filename[80] = "tehdataz";
+
+  char* mapping;
+  if (disable_mapping)
+    mapping = no_mapping;
+  else
+    mapping = sign_mag_mapping;
 
   FT_STATUS ft_status;
   FT_HANDLE ft_handle;
@@ -194,17 +200,18 @@ int main()
        *
        * Before writing the sample to the output file we use a lookup table to
        * convert the sample into a signed byte in two's-complement form for
-       * easier post-processing.
+       * easier post-processing (unless mapping is disabled).
        */
 
       /* Write sample 0. */
-      char sample0 = raw_value_mapping[(rx_buff[i]>>5) & 0x7];
+      char sample0 = mapping[(rx_buff[i]>>5) & 0x7];
       fputc(sample0, fp);
 
       /* Write sample 1. */
+      /*char sample1 = mapping[(rx_buff[i]>>2) & 0x7];*/
       /* TODO: When the v2.3 hardware is ready fix the interleaving here. */
+      /*fputc(sample1, fp);*/
       fputc(0, fp);
-      /*fputc(raw_value_mapping[(rx_buff[i]>>2) & 0x7], fp);*/
 
       if (ferror(fp)) {
         perror("Error writing to output file");
