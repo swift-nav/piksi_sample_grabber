@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <ftd2xx.h>
+#include "ftd2xx.h"
 
 /* Block size to transfer. */
 #define XFER_LEN (16*1024)
@@ -35,7 +35,7 @@ int main()
 {
   int verbose = 2;
   long bytes_wanted = MBS*1000*1000;
-  char* filename[80] = "tehdataz";
+  char filename[80] = "tehdataz";
 
   FT_STATUS ft_status;
   FT_HANDLE ft_handle;

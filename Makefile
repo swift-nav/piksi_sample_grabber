@@ -1,6 +1,6 @@
 
 CC = gcc
-CFLAGS = -Wall -Werror -lftd2xx -I./libftd2xx -std=gnu99
+CFLAGS = -Wall -Werror -lftd2xx -std=gnu99
 
 APP = sample_grabber
 
