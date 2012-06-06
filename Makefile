@@ -1,5 +1,6 @@
-CC=gcc
-CFLAGS=-lftd2xx -I./libftd2xx -std=gnu99
+
+CC = gcc
+CFLAGS = -Wall -Werror -lftd2xx -I./libftd2xx -std=gnu99
 
 APP = sample_grabber
 
@@ -9,5 +10,6 @@ $(APP): sample_grabber.c
 	$(CC) sample_grabber.c -o $(APP) $(CFLAGS)
 
 clean:
-	rm -f *.o ; rm $(APP)
+	rm -f *.o
+	rm $(APP)
 
