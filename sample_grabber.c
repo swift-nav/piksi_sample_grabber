@@ -13,7 +13,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <time.h>
+#include <getopt.h>
+#include <signal.h>
+
 #include "ftd2xx.h"
 
 /* Block size to transfer. */
@@ -30,21 +34,147 @@ char rx_buff[XFER_LEN];
 char sign_mag_mapping[8] = {1, 3, 5, 7, -1, -3, -5, -7};
 char no_mapping[8] = {0, 1, 2, 3, 4, 5, 6, 7};
 
-int main()
+/* Global state so it can be accessed from the exit handler. */
+FILE* fp;
+FT_HANDLE ft_handle;
+int verbose = 0;
+long total_n_rx = 0;
+time_t t0;
+
+void exit_handler();
+
+void print_usage()
 {
-  int verbose = 2;
+  printf("Usage: sample_grabber [options] file\n"
+         "Options:\n"
+         "  [-N]             Disable raw value mapping.\n"
+         "                   This disables the mapping of values from raw\n"
+         "                   front-end output to two's complement values.\n"
+         "  [--help -h]      Print this information.\n"
+         "  [--verbose -v]   Print more verbose output.\n"
+         "  [--size -s SIZE] Stop transfer after SIZE samples have been\n"
+         "                   transferred. Suffixes 'k' and 'M' are permitted\n"
+         "                   to multiply by 1e3 and 1e6 respectively.\n"
+  );
+}
+
+/** Parse a string representing a number of samples to an integer.  String can
+ * be a plain number or can include a unit suffix. This can be one of 'k' or
+ * 'M' which multiply by 1e3 and 1e6 respectively.
+ *
+ * e.g. "5" -> 5
+ *      "2k" -> 2000
+ *      "3M" -> 3000000
+ *
+ * Returns -1 on an error condition.
+ */
+long int parse_size(char * s)
+{
+  long int val = -1;
+  char last = s[strlen(s)-1];
+
+  /* If the last character is a digit then just return the string as a
+   * number.
+   */
+  if (isdigit(last)) {
+    val = atol(s);
+    if (val != 0)
+      return val;
+    else
+      return -1;
+  }
+
+  /* Last char is a unit suffix, find the numeric part of the value. */
+  /* Delete the suffix. */
+  s[strlen(s)-1] = 0;
+  /* Convert to a long int. */
+  val = atol(s);
+  if (val == 0)
+    return -1;
+
+  /* Multiply according to suffix and return value. */
+  switch (last) {
+    case 'k':
+    case 'K':
+      return val*1e3;
+      break;
+
+    case 'M':
+      return val*1e6;
+      break;
+
+    default:
+      return -1;
+  }
+}
+
+int main(int argc, char *argv[])
+{
   int disable_mapping = 0;
-  long bytes_wanted = 16*1000*1000;
-  char filename[80] = "tehdataz";
+  long int bytes_wanted = 16*1000*1000;
+
+  static const struct option long_opts[] = {
+    {"no-mapping", no_argument,       NULL, 'N'},
+    {"size",       required_argument, NULL, 's'},
+    {"verbose",    no_argument,       NULL, 'v'},
+    {"help",       no_argument,       NULL, 'h'},
+    {NULL,         no_argument,       NULL, 0}
+  };
+
+  opterr = 0;
+  int c;
+  int option_index = 0;
+  while ((c = getopt_long(argc, argv, "Ns:vh", long_opts, &option_index)) != -1)
+    switch (c) {
+      case 'N':
+        disable_mapping = 1;
+        break;
+      case 'v':
+        verbose++;
+        break;
+      case 's': {
+        long int samples_wanted = parse_size(optarg);
+        if (samples_wanted < 0) {
+          fprintf(stderr, "Invalid size argument.\n");
+          return EXIT_FAILURE;
+        }
+        /* 2 samples per byte. */
+        bytes_wanted = samples_wanted / 2;
+        break;
+      }
+      case 'h':
+        print_usage();
+        return EXIT_SUCCESS;
+      case '?':
+        if (optopt == 's')
+          fprintf(stderr, "Transfer size option requires an argument.\n");
+        else
+          fprintf(stderr, "Unknown option `-%c'.\n", optopt);
+        return EXIT_FAILURE;
+      default:
+        abort();
+     }
+
+  /* Output filename is the first non-option argument. */
+  if (optind >= argc) {
+    fprintf(stderr, "Please specify an output filename.\n");
+    return EXIT_FAILURE;
+  }
+  char* filename = argv[optind];
 
   char* mapping;
-  if (disable_mapping)
+  if (disable_mapping) {
+    if (verbose > 0)
+      printf("Raw value mapping is disabled.\n");
     mapping = no_mapping;
-  else
+  } else {
     mapping = sign_mag_mapping;
+  }
+
+  if (verbose > 0)
+    printf("Transfering %lu bytes (%lu samples).\n", bytes_wanted, bytes_wanted*2);
 
   FT_STATUS ft_status;
-  FT_HANDLE ft_handle;
 
   /* Set our custom USB VID and PID in the driver so the device can be
    * identified. */
@@ -52,7 +182,7 @@ int main()
   if (ft_status != FT_OK) {
     fprintf(stderr, "ERROR: Setting custom PID failed!"
                     " (status=%d)\n", ft_status);
-    return 1;
+    return EXIT_FAILURE;
   }
 
   /* Open the first device matching with description matching
@@ -61,7 +191,7 @@ int main()
   if (ft_status != FT_OK) {
     fprintf(stderr, "ERROR: Unable to open device!"
                     " (status=%d)\n", ft_status);
-    return 1;
+    return EXIT_FAILURE;
   }
 
   /* Device was opened OK, let's get some more information about it. */
@@ -75,7 +205,7 @@ int main()
     fprintf(stderr, "ERROR: Could not get device info!"
                     " (status=%d)\n", ft_status);
     FT_Close(ft_handle);
-    return 1;
+    return EXIT_FAILURE;
   }
 
   if (verbose > 0)
@@ -95,7 +225,7 @@ int main()
     fprintf(stderr, "ERROR: Setting FTDI bit mode failed!"
                     " (status=%d)\n", ft_status);
     FT_Close(ft_handle);
-    return 1;
+    return EXIT_FAILURE;
   }
 
   /* Configure FTDI device and driver for maximum performance. Some of these
@@ -112,21 +242,21 @@ int main()
     fprintf(stderr, "ERROR: Setting Latency Timer failed!"
                     " (status=%d)\n", ft_status);
     FT_Close(ft_handle);
-    return 1;
+    return EXIT_FAILURE;
   }
   ft_status = FT_SetUSBParameters(ft_handle, 0x10000, 0x10000);
   if (ft_status != FT_OK) {
     fprintf(stderr, "ERROR: Setting USB transfer size failed!"
                     " (status=%d)\n", ft_status);
     FT_Close(ft_handle);
-    return 1;
+    return EXIT_FAILURE;
   }
   ft_status = FT_SetFlowControl(ft_handle, FT_FLOW_RTS_CTS, 0, 0);
   if (ft_status != FT_OK) {
     fprintf(stderr, "ERROR: Setting flow control mode failed!"
                     " (status=%d)\n", ft_status);
     FT_Close(ft_handle);
-    return 1;
+    return EXIT_FAILURE;
   }
 
   /* Purge the receive buffer on the FTDI device of any old data. */
@@ -135,21 +265,18 @@ int main()
     fprintf(stderr, "ERROR: Purging RX buffer failed!"
                     " (status=%d)\n", ft_status);
     FT_Close(ft_handle);
-    return 1;
+    return EXIT_FAILURE;
   }
 
-  FILE* fp = fopen(filename, "w");
+  fp = fopen(filename, "w");
   if (ferror(fp)) {
     perror("Error opening output file");
     FT_Close(ft_handle);
     fclose(fp);
-    return 1;
+    return EXIT_FAILURE;
   }
 
   DWORD n_rx;
-  long total_n_rx = 0;
-
-  time_t t0, t1;
 
   /* To make sure the internal SwiftNAP buffers are flushed we just discard a
    * bit of data at the beginning. */
@@ -160,12 +287,16 @@ int main()
                       " (status=%d)\n", ft_status);
       FT_Close(ft_handle);
       fclose(fp);
-      return 1;
+      return EXIT_FAILURE;
     }
   }
 
   /* Store transfer starting time for later. */
   t0 = time(NULL);
+
+  /* Register our SIGINT handler so we can let the user cleanly stop the
+   * transfer with Ctrl-C. */
+  signal(SIGINT, exit_handler);
 
   /* Capture data! */
   while (total_n_rx < bytes_wanted) {
@@ -176,7 +307,7 @@ int main()
                       " (status=%d)\n", ft_status);
       FT_Close(ft_handle);
       fclose(fp);
-      return 1;
+      return EXIT_FAILURE;
     }
 
     /* Ok, we received n_rx bytes. */
@@ -208,22 +339,34 @@ int main()
       fputc(sample0, fp);
 
       /* Write sample 1. */
-      /*char sample1 = mapping[(rx_buff[i]>>2) & 0x7];*/
+      char sample1 = mapping[(rx_buff[i]>>2) & 0x7];
       /* TODO: When the v2.3 hardware is ready fix the interleaving here. */
-      /*fputc(sample1, fp);*/
-      fputc(0, fp);
+      fputc(sample1, fp);
+      /*fputc(0, fp);*/
 
       if (ferror(fp)) {
         perror("Error writing to output file");
         FT_Close(ft_handle);
         fclose(fp);
-        return 1;
+        return EXIT_FAILURE;
       }
     }
   }
 
-  /* Store transfer finishing time. */
-  t1 = time(NULL);
+  if (verbose > 0)
+    printf("Done!\n");
+  exit_handler(0);
+  return EXIT_SUCCESS;
+}
+
+void exit_handler(int sig)
+{
+  /* Ignore SIGINT inside the handler. */
+  if (sig)
+    signal(SIGINT, SIG_IGN);
+
+  /* Transfer finishing time. */
+  time_t t1 = time(NULL);
   double t = t1 - t0;
 
   /* Clean up. */
@@ -232,14 +375,11 @@ int main()
 
   /* Print some statistics. */
   if (verbose > 0) {
-    printf("Done!\n");
-    printf("%.2f MB in %.2f seconds, %.3f MB/s\n",
-           bytes_wanted / 1e6,
+    printf("%.2f MSamples in %.2f seconds, %.3f MS/s\n",
+           2*total_n_rx / 1e6,
            t,
-           (bytes_wanted / 1e6) / t
+           2*(total_n_rx / 1e6) / t
     );
   }
-
-  return 0;
+  exit(0);
 }
-
