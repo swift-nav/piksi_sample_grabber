@@ -24,10 +24,15 @@
 #define XFER_LEN (16*1024)
 char rx_buff[XFER_LEN];
 
-/* USB device description, used to find the device to open. */
-#define USB_DEVICE_DESC "Piksi Passthrough"
+/* Piksi Passthrough USB device description, used to find the device to open. */
+#define USB_PASSTHRU_DESC "Piksi Passthrough"
 #define USB_CUSTOM_VID 0x0403
 #define USB_CUSTOM_PID 0x8398
+
+/* Default VID/PID and VCP device description */
+#define USB_UART_DESC "Piksi UART over USB"
+#define USB_DEF_VID 0x0403
+#define USB_DEF_PID 0x6014
 
 /* Mapping from raw sign-magnitude format to two's complement.
  * See MAX2769 Datasheet, Table 2. */
@@ -186,11 +191,24 @@ int main(int argc, char *argv[])
   }
 
   /* Open the first device matching with description matching
-   * USB_DEVICE_DESC. */
-  ft_status = FT_OpenEx(USB_DEVICE_DESC, FT_OPEN_BY_DESCRIPTION, &ft_handle);
+   * USB_PASSTHRU_DESC. */
+  ft_status = FT_OpenEx(USB_PASSTHRU_DESC, FT_OPEN_BY_DESCRIPTION, &ft_handle);
   if (ft_status != FT_OK) {
-    fprintf(stderr, "ERROR: Unable to open device!"
-                    " (status=%d)\n", ft_status);
+    /* If that didn't work, try the VCP VID/PID and Description */
+    /* Set the VCP VID/PID */
+    ft_status = FT_SetVIDPID(USB_DEF_VID, USB_DEF_PID);
+    if (ft_status != FT_OK) {
+      fprintf(stderr, "ERROR: Setting VCP VID/PID failed!"
+                      " (status=%d)\n", ft_status);
+      return EXIT_FAILURE;
+    }
+    /* Try to open by description */
+    ft_status = FT_OpenEx(USB_UART_DESC, FT_OPEN_BY_DESCRIPTION, &ft_handle);
+  }
+  if (ft_status != FT_OK){
+    fprintf(stderr, "ERROR: Unable to open device! (status=%d)\n"
+                    "Have you tried (sudo rmmod ftdi_sio)? \n",
+                     ft_status);
     return EXIT_FAILURE;
   }
 

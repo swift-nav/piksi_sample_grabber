@@ -70,7 +70,7 @@ int main()
   printf("Opening device\n");
   ft_status = FT_Open(iport, &ft_handle);
   if (ft_status != FT_OK){
-    fprintf(stderr,"ERROR : Failed to open device : ft_status = %d\nDo you need to sudo rmmod ftdi_sio?\n",ft_status);
+    fprintf(stderr,"ERROR : Failed to open device : ft_status = %d\nHave you tried (sudo rmmod ftdi_sio)?\n",ft_status);
     return EXIT_FAILURE;
   }
 
