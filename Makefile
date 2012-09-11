@@ -2,14 +2,16 @@
 CC = gcc
 CFLAGS = -Wall -Werror -lftd2xx -std=gnu99
 
-APP = sample_grabber
+all: sample_grabber back_to_uart
 
-all: $(APP)
+sample_grabber : sample_grabber.c
+	$(CC) sample_grabber.c -o sample_grabber $(CFLAGS)
 
-$(APP): sample_grabber.c
-	$(CC) sample_grabber.c -o $(APP) $(CFLAGS)
+back_to_uart : back_to_uart.c
+	$(CC) back_to_uart.c -o back_to_uart $(CFLAGS)
 
 clean:
 	rm -f *.o
-	rm $(APP)
+	rm sample_grabber
+	rm back_to_uart
 
