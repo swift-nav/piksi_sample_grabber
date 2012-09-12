@@ -1,0 +1,6 @@
+sample_grabber : receives an arbitrary number of raw samples from the Piksi,
+                 using the onboard FT232H in FIFO mode
+
+back_to_uart : configures the FT232H EEPROM for VCP mode for normal operation,
+               to be used after running sample_grabber or if the EEPROM is 
+               blank/corrupted
