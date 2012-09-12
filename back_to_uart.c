@@ -13,11 +13,48 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <getopt.h>
 
 #include "ftd2xx.h"
 
-int main()
+void print_usage()
 {
+  printf("Usage: back_to_uart [options]\n"
+         "Options:\n"
+         "  [-p]  Don't prompt user as to whether device being written to is correct.\n"
+         "  [-h]  Print this information.\n"
+  );
+}
+
+int main(int argc, char *argv[])
+{
+
+  int dont_prompt = 0;
+
+  static const struct option long_opts[] = {
+    {NULL, no_argument, NULL, 'p'},
+    {NULL, no_argument, NULL, 'h'},
+    {NULL, no_argument, NULL, 0}
+  };
+
+  opterr = 0;
+  int c;
+  int option_index = 0;
+  while ((c = getopt_long(argc, argv, "ph", long_opts, &option_index)) != -1)
+    switch (c) {
+      case 'p':
+        dont_prompt++;
+        break;
+      case 'h':
+        print_usage();
+        return EXIT_SUCCESS;
+      case '?':
+        fprintf(stderr, "Unknown option `-%c'.\n", optopt);
+        return EXIT_FAILURE;
+      default:
+        abort();
+     }
+
 	FT_STATUS	ft_status;
 	FT_HANDLE	ft_handle;
 	FT_PROGRAM_DATA eeprom_data;
@@ -37,12 +74,13 @@ int main()
 	eeprom_data.SerialNumber = NULL;		// if fixed, or NULL
 
   //See how many devices are plugged in, fail if more than 1
-  printf("Making sure only 1 FTDI device is plugged in\n");
-  ft_status = FT_ListDevices(&num_devs,NULL,FT_LIST_NUMBER_ONLY);
+  printf("Creating device info list\n");
+  ft_status = FT_CreateDeviceInfoList(&num_devs);
   if (ft_status != FT_OK){
-    fprintf(stderr,"ERROR : Failed to get number of devices, ft_status = %d\n",ft_status);
+    fprintf(stderr,"ERROR : Failed to create device info list, ft_status = %d\n",ft_status);
     return EXIT_FAILURE;
-  } 
+  }
+  printf("Making sure only one FTDI device is plugged in\n");
   //Check that there is only 1 device plugged in
   if (num_devs > 1){
     fprintf(stderr,"ERROR : More than one FTDI device plugged in\n");
@@ -66,6 +104,36 @@ int main()
     fprintf(stderr,"ERROR : Failed to set VID and PID, ft_status = %d\n",ft_status);
     return EXIT_FAILURE;
   }
+
+  //Get info about the device and print to user
+  DWORD lpdw_flags;
+  DWORD lpdw_type;
+  DWORD lpdw_id;
+  char pc_serial_number[16];
+  char pc_description[64];
+  ft_status = FT_GetDeviceInfoDetail(0,&lpdw_flags,&lpdw_type,&lpdw_id,NULL,pc_serial_number,pc_description,&ft_handle);
+  printf("Device Information : \n");
+  printf("     Description   : %s\n", pc_description);
+  printf("     Serial Number : %s\n", pc_serial_number);
+  printf("     Flags         : 0x%x\n", lpdw_flags);
+  printf("     Type          : 0x%x\n", lpdw_type);
+  printf("     ID            : 0x%x\n", lpdw_id);
+
+  //Ask user if this is the correct device
+  if (dont_prompt == 0) {
+    char correct_device;
+    printf("Is this the correct device? (y/n) : ");
+    scanf("%c",&correct_device);
+    while ((correct_device != 'y') && (correct_device != 'n')) {
+      printf("\rPlease enter y or n");
+      scanf("%c",&correct_device);
+    }
+    if (correct_device == 'n'){
+      printf("Exiting, since this is not the device we want to program\n");
+      return EXIT_SUCCESS;
+    }
+  }
+
   //Open the device
   printf("Opening device\n");
   ft_status = FT_Open(iport, &ft_handle);
@@ -107,5 +175,5 @@ int main()
 	}
 
   printf("Unplug and replug your device now\n");
-	return 0;
+	return EXIT_SUCCESS;
 }
