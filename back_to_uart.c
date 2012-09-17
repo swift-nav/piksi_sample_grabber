@@ -55,9 +55,9 @@ int main(int argc, char *argv[])
         abort();
      }
 
-	FT_STATUS	ft_status;
-	FT_HANDLE	ft_handle;
-//	FT_PROGRAM_DATA eeprom_data;
+  FT_STATUS ft_status;
+  FT_HANDLE ft_handle;
+//  FT_PROGRAM_DATA eeprom_data;
   DWORD num_devs;
   DWORD VID, PID;
   int iport = 0;
@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
     fprintf(stderr,"ERROR : More than one FTDI device plugged in\n");
     return EXIT_FAILURE;
   }
-	
+  
   //Get VID/PID from FTDI device
   printf("Getting VID/PID from device\n");
   ft_status = FT_GetVIDPID(&VID,&PID);
@@ -167,23 +167,23 @@ int main(int argc, char *argv[])
   }
 
   /* Assign appropriate values to eeprom data */
-//	eeprom_data.Signature1 = 0x00000000;
-//	eeprom_data.Signature2 = 0xffffffff;
+//  eeprom_data.Signature1 = 0x00000000;
+//  eeprom_data.Signature2 = 0xffffffff;
 ////  eeprom_data.Version = 0; //FT232H
-//	eeprom_data.VendorId = 0x0403;				
-//	eeprom_data.ProductId = 0x6014;
-//	eeprom_data.Manufacturer = "FTDI";
-//	eeprom_data.ManufacturerId = "FT";
-//	eeprom_data.Description = "Piksi UART over USB";
-////	eeprom_data.SerialNumber = NULL;		// if fixed, or NULL
+//  eeprom_data.VendorId = 0x0403;        
+//  eeprom_data.ProductId = 0x6014;
+//  eeprom_data.Manufacturer = "FTDI";
+//  eeprom_data.ManufacturerId = "FT";
+//  eeprom_data.Description = "Piksi UART over USB";
+////  eeprom_data.SerialNumber = NULL;    // if fixed, or NULL
 
   /* Program device EEPROM */
 //  printf("Programming device EEPROM\n");
-//	ft_status = FT_EE_Program(ft_handle, &eeprom_data);
-//	if(ft_status != FT_OK) {
+//  ft_status = FT_EE_Program(ft_handle, &eeprom_data);
+//  if(ft_status != FT_OK) {
 //    fprintf(stderr,"ERROR : Failed to program device EEPROM : ft_status = %d\n",ft_status);
 //    return EXIT_FAILURE;
-//	}
+//  }
 
   /* Reset the device */
   printf("Resetting device\n");
@@ -195,12 +195,12 @@ int main(int argc, char *argv[])
 
   /* Close the device */
   printf("Closing device\n");
-	FT_Close(ft_handle);
-	if(ft_status != FT_OK) {
+  FT_Close(ft_handle);
+  if(ft_status != FT_OK) {
     fprintf(stderr,"ERROR : Failed to close device : ft_status = %d\n",ft_status);
     return EXIT_FAILURE;
-	}
+  }
 
   printf("Unplug and replug your device now\n");
-	return EXIT_SUCCESS;
+  return EXIT_SUCCESS;
 }
