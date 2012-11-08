@@ -286,24 +286,12 @@ int main(int argc, char *argv[])
     }
     if (verbose > 0)
       printf("Reset device\n");
-
-    /* Set FTDI device into FT245 Synchronous FIFO mode. NOTE: This mode must
-     * _also_ be enabled in the device's EEPROM! */
-    ft_status = FT_SetBitMode(ft_handle, 0xFF, FT_BITMODE_SYNC_FIFO);
-    if (ft_status != FT_OK) {
-      fprintf(stderr, "ERROR: Setting FTDI bit mode failed!"
-                      " (status=%d)\n", ft_status);
-      FT_Close(ft_handle);
-      return EXIT_FAILURE;
-    }
-    if (verbose > 0)
-      printf("Set device in FT245 Synchronous FIFO mode\n");
     
     printf("Please unplug and replug your device and run sample_grabber again\n");
     return EXIT_SUCCESS;
   }
 
-  /* Get some more information about the device. */
+  /* Get some more information about the device. */ 
 //  FT_DEVICE ft_type;
 //  DWORD id;
 //  char serial_number[80];
@@ -326,6 +314,18 @@ int main(int argc, char *argv[])
 //    printf("  VID: 0x%04X\n", (id >> 16));
 //    printf("  PID: 0x%04X\n", (id & 0xFFFF));
 //  }
+
+  /* Set FTDI device into FT245 Synchronous FIFO mode. NOTE: This mode must
+   * _also_ be enabled in the device's EEPROM! */
+  ft_status = FT_SetBitMode(ft_handle, 0xFF, FT_BITMODE_SYNC_FIFO);
+  if (ft_status != FT_OK) {
+    fprintf(stderr, "ERROR: Setting FTDI bit mode failed!"
+                    " (status=%d)\n", ft_status);
+    FT_Close(ft_handle);
+    return EXIT_FAILURE;
+  }
+  if (verbose > 0)
+    printf("Set device in FT245 Synchronous FIFO mode\n");
   
   /* Configure FTDI device and driver for maximum performance. Some of these
    * configuration values are given in the following FTDI documents but they
