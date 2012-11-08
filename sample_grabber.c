@@ -317,7 +317,12 @@ int main(int argc, char *argv[])
   signal(SIGINT, exit_handler);
 
   /* Capture data! */
+  int break_flag = 0;
   while (total_n_rx < bytes_wanted) {
+
+    /* See if we've broken out of the nested mapping for loop */
+    if (break_flag) break;
+
     /* Ask for XFER_LEN bytes from the device. */
     ft_status = FT_Read(ft_handle, rx_buff, XFER_LEN, &n_rx);
     if (ft_status != FT_OK) {
@@ -338,7 +343,13 @@ int main(int argc, char *argv[])
        *
        *   [7-5] - Sample 0
        *   [4-2] - Sample 1
-       *   [1-0] - Flags, reserved for future use.
+       *   [1] - Flag, reserved for future use.
+       *   [0] - FIFO Overflow Flag, FPGA's internal FIFO has overflowed
+       *
+       * We check the FIFO Overflow Flag, Bit 0, in each of the sample sets
+       * to make sure that we haven't dropped any samples. If we do we stop
+       * recording samples as there will be a discontinuity we we continue
+       * recording.
        *
        * Samples are packed as follows:
        *
@@ -351,6 +362,13 @@ int main(int argc, char *argv[])
        * convert the sample into a signed byte in two's-complement form for
        * easier post-processing (unless mapping is disabled).
        */
+      
+      /* Check the FIFO Overflow Flag */
+      if (rx_buff[i] & 0x01) {
+        printf("FPGA FIFO overflow detected, stopping here and exiting\n");
+        break_flag = 1;
+        break;
+      }
 
       /* Write sample 0. */
       char sample0 = mapping[(rx_buff[i]>>5) & 0x7];
