@@ -29,11 +29,6 @@ char rx_buff[XFER_LEN];
 #define USB_CUSTOM_VID 0x0403
 #define USB_CUSTOM_PID 0x8398
 
-/* Default VID/PID and VCP device description */
-#define USB_UART_DESC "Piksi UART over USB"
-#define USB_DEF_VID 0x0403
-#define USB_DEF_PID 0x6014
-
 /* Mapping from raw sign-magnitude format to two's complement.
  * See MAX2769 Datasheet, Table 2. */
 char sign_mag_mapping[8] = {1, 3, 5, 7, -1, -3, -5, -7};
@@ -180,72 +175,158 @@ int main(int argc, char *argv[])
     printf("Transfering %lu bytes (%lu samples).\n", bytes_wanted, bytes_wanted*2);
 
   FT_STATUS ft_status;
+  DWORD VID, PID;
+  int iport = 0;
 
-  /* Set our custom USB VID and PID in the driver so the device can be
-   * identified. */
-  ft_status = FT_SetVIDPID(USB_CUSTOM_VID, USB_CUSTOM_PID);
-  if (ft_status != FT_OK) {
-    fprintf(stderr, "ERROR: Setting custom PID failed!"
-                    " (status=%d)\n", ft_status);
+  //Get VID/PID from FTDI device
+  if (verbose > 0)
+    printf("Getting VID/PID from device\n");
+  ft_status = FT_GetVIDPID(&VID,&PID);
+  if (ft_status != FT_OK){
+    fprintf(stderr,"ERROR : Failed to get VID and PID from FTDI device, ft_status = %d\n",ft_status);
+    return EXIT_FAILURE;
+  }
+  if (verbose > 0)
+    printf("    VID = %04x, PID = %04x\n",VID,PID);
+  //Set the VID/PID found
+  if (verbose > 0)
+    printf("Setting VID/PID\n");
+  ft_status = FT_SetVIDPID(VID,PID);
+  if (ft_status != FT_OK){
+    fprintf(stderr,"ERROR : Failed to set VID and PID, ft_status = %d\n",ft_status);
     return EXIT_FAILURE;
   }
 
-  /* Open the first device matching with description matching
-   * USB_PASSTHRU_DESC. */
-  ft_status = FT_OpenEx(USB_PASSTHRU_DESC, FT_OPEN_BY_DESCRIPTION, &ft_handle);
-  if (ft_status != FT_OK) {
-    /* If that didn't work, try the VCP VID/PID and Description */
-    /* Set the VCP VID/PID */
-    ft_status = FT_SetVIDPID(USB_DEF_VID, USB_DEF_PID);
-    if (ft_status != FT_OK) {
-      fprintf(stderr, "ERROR: Setting VCP VID/PID failed!"
-                      " (status=%d)\n", ft_status);
+  //TODO : find a better way to do this
+  //If VID/PID is already 0403/8398, we assume we have already programmed the EEPROM
+  //If not, the device must be unplugged and replugged after the EEPROM is erased
+  //and programmed
+  int gotta_replug = 1;
+
+  //Open the device
+  if (verbose > 0)
+    printf("Attempting to open device using read VID/PID...");
+  ft_status = FT_Open(iport, &ft_handle);
+  //If that didn't work, try some other likely VID/PID combos
+  //Try 0403:6014
+  if (ft_status != FT_OK){
+    if (verbose > 0)
+      printf("FAILED\nTrying VID=0x0403, PID=0x6014...");
+    ft_status = FT_SetVIDPID(0x0403,0x6014);
+    if (ft_status != FT_OK){
+      fprintf(stderr,"ERROR : Failed to set VID and PID, ft_status = %d\n",ft_status);
       return EXIT_FAILURE;
     }
-    /* Try to open by description */
-    ft_status = FT_OpenEx(USB_UART_DESC, FT_OPEN_BY_DESCRIPTION, &ft_handle);
+    ft_status = FT_Open(iport, &ft_handle);
   }
+  //Try 0403:8398
   if (ft_status != FT_OK){
-    fprintf(stderr, "ERROR: Unable to open device! (status=%d)\n"
-                    "Have you tried (sudo rmmod ftdi_sio)? \n",
-                     ft_status);
+    if (verbose > 0)
+      printf("FAILED\nTrying VID=0x0403, PID=0x8398...");
+    ft_status = FT_SetVIDPID(0x0403,0x8398);
+    if (ft_status != FT_OK){
+      fprintf(stderr,"ERROR : Failed to set VID and PID, ft_status = %d\n",ft_status);
+      return EXIT_FAILURE;
+    }
+    ft_status = FT_Open(iport, &ft_handle);
+    if (ft_status == FT_OK)
+      gotta_replug = 0;
+  }
+  //Exit program if we still haven't opened the device
+  if (ft_status != FT_OK){
+    if (verbose > 0)
+      printf("FAILED\n");
+    fprintf(stderr,"ERROR : Failed to open device : ft_status = %d\nHave you tried (sudo rmmod ftdi_sio)?\n",ft_status);
     return EXIT_FAILURE;
   }
-
-  /* Device was opened OK, let's get some more information about it. */
-  FT_DEVICE ft_type;
-  DWORD id;
-  char serial_number[80];
-  char desc[80];
-  ft_status = FT_GetDeviceInfo(ft_handle, &ft_type, &id, serial_number,
-                               desc, NULL);
-  if (ft_status != FT_OK) {
-    fprintf(stderr, "ERROR: Could not get device info!"
-                    " (status=%d)\n", ft_status);
-    FT_Close(ft_handle);
-    return EXIT_FAILURE;
-  }
-
   if (verbose > 0)
-    printf("Device opened, serial number: %s\n", serial_number);
-  if (verbose > 1) {
-    printf("Device Info:\n");
-    printf("  Description: %s\n", desc);
-    printf("  FTDI Type: %d\n", ft_type);
-    printf("  VID: 0x%04X\n", (id >> 16));
-    printf("  PID: 0x%04X\n", (id & 0xFFFF));
+    printf("SUCCESS\n");
+
+  //Device needs to be programmed in FIFO mode and unplugged/replugged
+  if (gotta_replug == 1){
+    /* Erase the EEPROM */
+    ft_status = FT_EraseEE(ft_handle);
+    if(ft_status != FT_OK) {
+      fprintf(stderr, "ERROR: Device EEPROM could not be erased : ft_status = %d\n", ft_status);
+      return EXIT_FAILURE;
+    }
+    if (verbose > 0)
+      printf("Erased device's EEPROM\n");
+
+    /* Assign appropriate values to eeprom data */
+    FT_PROGRAM_DATA eeprom_data;
+
+    eeprom_data.Signature1 = 0x00000000;
+    eeprom_data.Signature2 = 0xffffffff;
+    eeprom_data.Version = 5; //5=FT232H
+    eeprom_data.VendorId = USB_CUSTOM_VID;        
+    eeprom_data.ProductId = USB_CUSTOM_PID;
+    eeprom_data.Manufacturer = "FTDI";
+    eeprom_data.ManufacturerId = "FT";
+    eeprom_data.Description = "Piksi Passthrough";
+    eeprom_data.IsFifoH = 1; //needed for FIFO samples passthrough
+
+//    time_t delay = time(NULL);
+//    while ((time(NULL)-delay) < 1);
+
+    /* Program device EEPROM */
+    ft_status = FT_EE_Program(ft_handle, &eeprom_data);
+    if(ft_status != FT_OK) {
+      fprintf(stderr,"ERROR : Failed to program device EEPROM : ft_status = %d\n",ft_status);
+      return EXIT_FAILURE;
+    }
+    if (verbose > 0)
+      printf("Programmed device's EEPROM\n");
+
+    /* Reset the device */
+    ft_status = FT_ResetDevice(ft_handle);
+    if(ft_status != FT_OK) {
+      fprintf(stderr, "ERROR: Device could not be reset : ft_status = %d\n", ft_status);
+      return EXIT_FAILURE;
+    }
+    if (verbose > 0)
+      printf("Reset device\n");
+
+    /* Set FTDI device into FT245 Synchronous FIFO mode. NOTE: This mode must
+     * _also_ be enabled in the device's EEPROM! */
+    ft_status = FT_SetBitMode(ft_handle, 0xFF, FT_BITMODE_SYNC_FIFO);
+    if (ft_status != FT_OK) {
+      fprintf(stderr, "ERROR: Setting FTDI bit mode failed!"
+                      " (status=%d)\n", ft_status);
+      FT_Close(ft_handle);
+      return EXIT_FAILURE;
+    }
+    if (verbose > 0)
+      printf("Set device in FT245 Synchronous FIFO mode\n");
+    
+    printf("Please unplug and replug your device and run sample_grabber again\n");
+    return EXIT_SUCCESS;
   }
 
-  /* Set FTDI device into FT245 Synchronous FIFO mode. NOTE: This mode must
-   * _also_ be enabled in the device's EEPROM! */
-  ft_status = FT_SetBitMode(ft_handle, 0xFF, FT_BITMODE_SYNC_FIFO);
-  if (ft_status != FT_OK) {
-    fprintf(stderr, "ERROR: Setting FTDI bit mode failed!"
-                    " (status=%d)\n", ft_status);
-    FT_Close(ft_handle);
-    return EXIT_FAILURE;
-  }
-
+  /* Get some more information about the device. */
+//  FT_DEVICE ft_type;
+//  DWORD id;
+//  char serial_number[80];
+//  char desc[80];
+//  ft_status = FT_GetDeviceInfo(ft_handle, &ft_type, &id, serial_number,
+//                               desc, NULL);
+//  if (ft_status != FT_OK) {
+//    fprintf(stderr, "ERROR: Could not get device info!"
+//                    " (status=%d)\n", ft_status);
+//    FT_Close(ft_handle);
+//    return EXIT_FAILURE;
+//  }
+//
+//  if (verbose > 0)
+//    printf("Device opened, serial number: %s\n", serial_number);
+//  if (verbose > 1) {
+//    printf("Device Info:\n");
+//    printf("  Description: %s\n", desc);
+//    printf("  FTDI Type: %d\n", ft_type);
+//    printf("  VID: 0x%04X\n", (id >> 16));
+//    printf("  PID: 0x%04X\n", (id & 0xFFFF));
+//  }
+  
   /* Configure FTDI device and driver for maximum performance. Some of these
    * configuration values are given in the following FTDI documents but they
    * still remain a bit of a mystery:
@@ -262,6 +343,7 @@ int main(int argc, char *argv[])
     FT_Close(ft_handle);
     return EXIT_FAILURE;
   }
+  if (verbose > 0)
   ft_status = FT_SetUSBParameters(ft_handle, 0x10000, 0x10000);
   if (ft_status != FT_OK) {
     fprintf(stderr, "ERROR: Setting USB transfer size failed!"
@@ -276,6 +358,8 @@ int main(int argc, char *argv[])
     FT_Close(ft_handle);
     return EXIT_FAILURE;
   }
+  if (verbose > 0)
+    printf("Set driver parameters for optimal performance\n");
 
   /* Purge the receive buffer on the FTDI device of any old data. */
   ft_status = FT_Purge(ft_handle, FT_PURGE_RX);
@@ -285,6 +369,8 @@ int main(int argc, char *argv[])
     FT_Close(ft_handle);
     return EXIT_FAILURE;
   }
+  if (verbose > 0)
+    printf("Purged FIFO buffer on FTDI chip onboard device\n");
 
   fp = fopen(filename, "w");
   if (ferror(fp)) {
@@ -293,9 +379,11 @@ int main(int argc, char *argv[])
     fclose(fp);
     return EXIT_FAILURE;
   }
+  if (verbose > 0)
+    printf("Opened file ""%s"" for writing samples to\n",filename);
 
   DWORD n_rx;
-
+  
   /* To make sure the internal SwiftNAP buffers are flushed we just discard a
    * bit of data at the beginning. */
   for (int i=0; i<8; i++) {
@@ -308,6 +396,8 @@ int main(int argc, char *argv[])
       return EXIT_FAILURE;
     }
   }
+  if (verbose > 0)
+    printf("Read a good number of samples to allow SwiftNAP buffers time to flush\n");
 
   /* Store transfer starting time for later. */
   t0 = time(NULL);
@@ -390,7 +480,7 @@ int main(int argc, char *argv[])
   }
 
   if (verbose > 0)
-    printf("Done!\n");
+    printf("Finished receiving samples\n");
   exit_handler(0);
   return EXIT_SUCCESS;
 }
@@ -410,12 +500,10 @@ void exit_handler(int sig)
   fclose(fp);
 
   /* Print some statistics. */
-  if (verbose > 0) {
-    printf("%.2f MSamples in %.2f seconds, %.3f MS/s\n",
-           2*total_n_rx / 1e6,
-           t,
-           2*(total_n_rx / 1e6) / t
-    );
-  }
+  printf("%.2f MSamples in %.2f seconds, %.3f MS/s\n",
+         2*total_n_rx / 1e6,
+         t,
+         2*(total_n_rx / 1e6) / t
+  );
   exit(0);
 }
