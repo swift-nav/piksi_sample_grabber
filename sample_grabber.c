@@ -29,6 +29,9 @@ char rx_buff[XFER_LEN];
 #define USB_CUSTOM_VID 0x0403
 #define USB_CUSTOM_PID 0x8398
 
+/* FPGA FIFO has overflowed when bit 0 of the transferred byte is 1 */
+#define FPGA_FIFO_OVERFLOW 0x01
+
 /* Mapping from raw sign-magnitude format to two's complement.
  * See MAX2769 Datasheet, Table 2. */
 char sign_mag_mapping[8] = {1, 3, 5, 7, -1, -3, -5, -7};
@@ -266,9 +269,6 @@ int main(int argc, char *argv[])
     eeprom_data.Description = "Piksi Passthrough";
     eeprom_data.IsFifoH = 1; //needed for FIFO samples passthrough
 
-//    time_t delay = time(NULL);
-//    while ((time(NULL)-delay) < 1);
-
     /* Program device EEPROM */
     ft_status = FT_EE_Program(ft_handle, &eeprom_data);
     if(ft_status != FT_OK) {
@@ -436,7 +436,7 @@ int main(int argc, char *argv[])
        *   [1] - Flag, reserved for future use.
        *   [0] - FIFO Overflow Flag, FPGA's internal FIFO has overflowed
        *
-       * We check the FIFO Overflow Flag, Bit 0, in each of the sample sets
+       * We check the FIFO Overflow Flag in each of the sample sets
        * to make sure that we haven't dropped any samples. If we do we stop
        * recording samples as there will be a discontinuity we we continue
        * recording.
@@ -454,7 +454,7 @@ int main(int argc, char *argv[])
        */
       
       /* Check the FIFO Overflow Flag */
-      if (rx_buff[i] & 0x01) {
+      if (rx_buff[i] & FPGA_FIFO_OVERFLOW) {
         printf("FPGA FIFO overflow detected, stopping here and exiting\n");
         break_flag = 1;
         break;
