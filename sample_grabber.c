@@ -29,7 +29,7 @@ char rx_buff[XFER_LEN];
 #define USB_CUSTOM_VID 0x0403
 #define USB_CUSTOM_PID 0x8398
 
-/* FPGA FIFO has overflowed when bit 0 of the transferred byte is 1 */
+/* FPGA FIFO has overflowed when bit 0 of the transferred byte is 0 */
 #define FPGA_FIFO_OVERFLOW 0x01
 
 /* Mapping from raw sign-magnitude format to two's complement.
@@ -40,9 +40,10 @@ char no_mapping[8] = {0, 1, 2, 3, 4, 5, 6, 7};
 /* Global state so it can be accessed from the exit handler. */
 FILE* fp;
 FT_HANDLE ft_handle;
+FT_STATUS ft_status;
 int verbose = 0;
 long total_n_rx = 0;
-time_t t0;
+time_t t0,t1;
 
 void exit_handler();
 
@@ -177,7 +178,6 @@ int main(int argc, char *argv[])
   if (verbose > 0)
     printf("Transfering %lu bytes (%lu samples).\n", bytes_wanted, bytes_wanted*2);
 
-  FT_STATUS ft_status;
   DWORD VID, PID;
   int iport = 0;
 
@@ -454,7 +454,8 @@ int main(int argc, char *argv[])
        */
       
       /* Check the FIFO Overflow Flag */
-      if (rx_buff[i] & FPGA_FIFO_OVERFLOW) {
+      if (!(rx_buff[i] & FPGA_FIFO_OVERFLOW)) {
+        t1 = time(NULL);
         printf("FPGA FIFO overflow detected, stopping here and exiting\n");
         break_flag = 1;
         break;
@@ -478,10 +479,14 @@ int main(int argc, char *argv[])
       }
     }
   }
+  if (break_flag == 0)
+    t1 = time(NULL);
 
   if (verbose > 0)
     printf("Finished receiving samples\n");
+
   exit_handler(0);
+
   return EXIT_SUCCESS;
 }
 
@@ -491,13 +496,12 @@ void exit_handler(int sig)
   if (sig)
     signal(SIGINT, SIG_IGN);
 
-  /* Transfer finishing time. */
-  time_t t1 = time(NULL);
-  double t = t1 - t0;
-
   /* Clean up. */
-  FT_Close(ft_handle);
+//  FT_Close(ft_handle); //seems to cause a seg fault for some reason
   fclose(fp);
+
+  /* Transfer finishing time. */
+  double t = t1 - t0;
 
   /* Print some statistics. */
   printf("%.2f MSamples in %.2f seconds, %.3f MS/s\n",
