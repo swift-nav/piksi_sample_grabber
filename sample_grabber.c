@@ -497,7 +497,8 @@ void exit_handler(int sig)
     signal(SIGINT, SIG_IGN);
 
   /* Clean up. */
-//  FT_Close(ft_handle); //seems to cause a seg fault for some reason
+  /* TODO : figure out a way to call FT_Close without it seg faulting */
+  //FT_Close(ft_handle); //seems to cause a seg fault for some reason
   fclose(fp);
 
   /* Transfer finishing time. */
