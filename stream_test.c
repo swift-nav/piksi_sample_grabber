@@ -198,8 +198,8 @@ int main(int argc, char **argv){
      exit(1);
 
    /* Write samples to file
-    * Extract samples from buffer and convert from signmag to signed in slices
-    * of CONV_BUF_SIZE, then write slice to disk
+    * Convert samples from buffer from signmag to signed and write to disk in 
+    * slices of CONV_BUF_SIZE
     * Packing of each byte is
     *   [7:5] : Sample 0
     *   [4:2] : Sample 1
