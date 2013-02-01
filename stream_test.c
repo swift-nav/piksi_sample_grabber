@@ -32,7 +32,8 @@
 #define CONV_BUF_SIZE 1000
 
 static uint64_t total_bytes_saved = 0;
-static char *file_buf,*conv_buf;
+static char *file_buf;
+//static char *conv_buf;
 
 /* Samples we get from the device are {sign,msb mag,lsb mag} */
 static char sign_mag_mapping[8] = {1, 3, 5, 7, -1, -3, -5, -7};
@@ -207,8 +208,9 @@ int main(int argc, char **argv){
     *   [0] : Error flag (FIFO full, over/underflow), active low
     */
    if (outputFile) {
-     conv_buf = (char *)malloc(CONV_BUF_SIZE);
-     uint64_t ci,ck,si = 0;
+//     conv_buf = (char *)malloc(CONV_BUF_SIZE);
+     char conv_buf[CONV_BUF_SIZE];
+     uint64_t ci = 0, ck = 0, si = 0;
      uint64_t slice_size = 0;
      while (ci < total_bytes_saved){
        si = 0;
@@ -225,7 +227,7 @@ int main(int argc, char **argv){
        }
        ci += CONV_BUF_SIZE;
      }
-     free(conv_buf);
+//     free(conv_buf);
      free(file_buf);
    }
    
