@@ -29,10 +29,10 @@
 #define NUM_FLUSH_BYTES 50000
 #define MAX_N_SAMPLES 130*16368000
 #define SAMPLES_PER_BYTE 2
-#
+#define CONV_BUF_SIZE 1000
 
 static uint64_t total_bytes_saved = 0;
-static char *file_buf;
+static char *file_buf,*conv_buf;
 
 /* Samples we get from the device are {sign,msb mag,lsb mag} */
 static char sign_mag_mapping[8] = {1, 3, 5, 7, -1, -3, -5, -7};
@@ -192,34 +192,42 @@ int main(int argc, char **argv){
      file_buf = (char *)malloc(MAX_N_SAMPLES/SAMPLES_PER_BYTE);
    }
    
+   /* Read samples from the device */
    err = ftdi_readstream(ftdi, readCallback, NULL, 8, 256);
    if (err < 0 && !exitRequested)
      exit(1);
 
    /* Write samples to file
-    * Extract samples from buffer and convert from signmag to signed
+    * Extract samples from buffer and convert from signmag to signed in slices
+    * of CONV_BUF_SIZE, then write slice to disk
     * Packing of each byte is
     *   [7:5] : Sample 0
     *   [4:2] : Sample 1
     *   [1] : Unused
     *   [0] : Error flag (FIFO full, over/underflow), active low
     */
-   uint64_t wi;
    if (outputFile) {
-     for (wi = 0; wi < total_bytes_saved; wi++) {
-       /* Write first sample */
-       if (fputc(sign_mag_mapping[file_buf[wi]>>5 & 0x07],outputFile) == EOF){
+     conv_buf = (char *)malloc(CONV_BUF_SIZE);
+     uint64_t ci,ck,si = 0;
+     uint64_t slice_size = 0;
+     while (ci < total_bytes_saved){
+       si = 0;
+       slice_size = (ci + CONV_BUF_SIZE < total_bytes_saved) ? 
+                    CONV_BUF_SIZE : total_bytes_saved - ci;
+       for (ck = 0; ck < slice_size; ck++){
+         conv_buf[si] = sign_mag_mapping[file_buf[ci+ck]>>5 & 0x07];
+         conv_buf[si+1] = sign_mag_mapping[file_buf[ci+ck]>>2 & 0x07];
+         si+=2;
+       }
+       if (fwrite(conv_buf,slice_size,1,outputFile) != 1){
          perror("Write error");
          while(1);
        }
-       /* Write second sample */
-       if (fputc(sign_mag_mapping[file_buf[wi]>>2 & 0x07],outputFile) == EOF){
-         perror("Write error");
-         while(1);
-       }
+       ci += CONV_BUF_SIZE;
      }
+     free(conv_buf);
+     free(file_buf);
    }
-   free(file_buf);
    
    if (outputFile) {
      fclose(outputFile);
