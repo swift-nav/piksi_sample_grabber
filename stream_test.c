@@ -118,15 +118,9 @@ readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress, void *user
           }
           /* Extract samples from buffer, convert, and store in conv_buf */
           /* First sample */
-//          conv_buf[ci*2+0] = mapping[(buffer[ci] >> 5) & 0x07];
+          conv_buf[ci*2+0] = mapping[(buffer[ci] >> 5) & 0x07];
           /* Second sample */
-//          conv_buf[ci*2+1] = mapping[(buffer[ci] >> 2) & 0x07];
-          /* Test data */
-          static uint8_t test_data = 0;
-          conv_buf[ci*2+0] = test_data;
-          test_data = (test_data < 62) ? (test_data + 1) : 0;
-          conv_buf[ci*2+1] = test_data;
-          test_data = (test_data < 62) ? (test_data + 1) : 0;
+          conv_buf[ci*2+1] = mapping[(buffer[ci] >> 2) & 0x07];
         }
         /* Push values into the pipe */
         pipe_push(pipe_writer,(void *)conv_buf,length*2);
@@ -146,39 +140,16 @@ readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress, void *user
   return exitRequested ? 1 : 0;
 }
 
-//static void* file_writer(void* pc_ptr){
-//  pipe_consumer_t* reader = pc_ptr;
-//  char buf[WRITE_SLICE_SIZE];
-//  size_t bytes_read;
-//  while (!(exitRequested)){
-//    bytes_read = pipe_pop(reader,buf,WRITE_SLICE_SIZE);
-//    if (bytes_read > 0){
-//      if (fwrite(buf,bytes_read,1,outputFile) != 1){
-//        perror("Write error\n");
-//        exitRequested = 1;
-//      }
-//    }
-//  }
-//  return NULL;
-//}
-
 static void* file_writer(void* pc_ptr){
   pipe_consumer_t* reader = pc_ptr;
   char buf[WRITE_SLICE_SIZE];
-  size_t bytes_read = 0;
-  char data_check;
-  while (bytes_read != 1){
-    bytes_read = pipe_pop(reader,&data_check,1);
-  }
+  size_t bytes_read;
   while (!(exitRequested)){
     bytes_read = pipe_pop(reader,buf,WRITE_SLICE_SIZE);
     if (bytes_read > 0){
-      for (uint64_t i=0; i<bytes_read; i++){
-        data_check = (data_check < 62) ? (data_check + 1) : 0;
-        if (buf[i] != data_check) { 
-          printf("test data mismatch reading from pipe!\n");
-          while(1);
-        }
+      if (fwrite(buf,bytes_read,1,outputFile) != 1){
+        perror("Write error\n");
+        exitRequested = 1;
       }
     }
   }
