@@ -23,24 +23,37 @@
 #include <getopt.h>
 #include <signal.h>
 #include <errno.h>
+#include <pthread.h>
 
 #include "ftdi.h"
+#include "pipe/pipe.h"
 
 #define NUM_FLUSH_BYTES 50000
-#define MAX_N_SAMPLES 130*16368000
 #define SAMPLES_PER_BYTE 2
-#define CONV_BUF_SIZE 1000
+/* Number of bytes to read out of FIFO and write to disk at a time */
+#define WRITE_SLICE_SIZE 50 
+#define PIPE_SIZE 0 /* 0 means size is unconstrained */
+
+/* FPGA FIFO Error Flag is 0th bit, active low */
+#define FPGA_FIFO_ERROR_CHECK(byte) (!(byte & 0x01))
 
 static uint64_t total_bytes_saved = 0;
-static char *file_buf;
-//static char *conv_buf;
 
-/* Samples we get from the device are {sign,msb mag,lsb mag} */
-static char sign_mag_mapping[8] = {1, 3, 5, 7, -1, -3, -5, -7};
+/* 
+ * Samples we get from the device are {sign,msb mag,lsb mag}. Can index this 
+ * array with each received signmag sample to convert to signed (signed int 8)
+ */
+static const char mapping[8] = {1, 3, 5, 7, -1, -3, -5, -7};
 
 static FILE *outputFile;
 
 static int exitRequested = 0;
+
+/* Pipe specific structs and pointers */
+static pipe_t *sample_pipe;
+static pthread_t thread;
+static pipe_producer_t* pipe_writer;
+static pipe_consumer_t* pipe_reader;
 
 /*
  * sigintHandler --
@@ -54,22 +67,16 @@ sigintHandler(int signum)
 }
 
 static void
-usage(const char *argv0)
+usage(void)
 {
-  fprintf(stderr,
-         "Usage: %s [options...] \n"
-         "Test streaming read from FT2232H\n"
-         "[-P string] only look for product with given string\n"
-         "\n"
-         "If some filename is given, write data read to that file\n"
-         "Progess information is printed each second\n"
-         "Abort with ^C\n"
-         "\n"
-         "Options:\n"
-         "\n"
-         "Copyright (C) 2009 Micah Dowty <micah@navi.cx>\n"
-         "Adapted for use with libftdi (C) 2010 Uwe Bonnes <bon@elektron.ikp.physik.tu-darmstadt.de>\n",
-         argv0);
+  printf("  Usage: ./stream_test [filename] \n"
+         "  If some filename is given, write data read to that file\n"
+         "  Progess information is printed each second\n"
+         "  Abort with ^C\n"
+         "  Copyright (C) 2009 Micah Dowty <micah@navi.cx>\n"
+         "  Adapted for libftdi (C) 2010 Uwe Bonnes <bon@elektron.ikp.physik.tu-darmstadt.de>\n"
+         "  Adapted for use with the Piksi (C) 2013 Swift Navigation <colin@swift-nav.com>\n"
+         );
   exit(1);
 }
 
@@ -78,45 +85,104 @@ static int
 readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress, void *userdata)
 {
   /*
-   * Keep track of number of packets read - don't record samples until we have 
-   * read a large number of packets. This is to flush out the FIFO in the FPGA 
+   * Keep track of number of bytes read - don't record samples until we have 
+   * read a large number of bytes. This is to flush out the FIFO in the FPGA 
    * - it is necessary to do this to ensure we receive continuous samples.
    */
   static uint64_t total_num_bytes_received = 0;
-  /* If we are going over the length of our file buffer then stop here */
-  if (SAMPLES_PER_BYTE*(total_bytes_saved + length) >= MAX_N_SAMPLES){
-    exitRequested = 1;
-  } else{
-    if (length){
-       total_num_bytes_received += length;
-       if (total_num_bytes_received >= NUM_FLUSH_BYTES){
-         /* Save data if we have a file to write it to */
-         if (outputFile) {
-           uint64_t si;
-           for (si = 0; si < length; si++){
-             /* Check data to see if a FIFO error occured */
-             if (!(buffer[si] & 0x01)) {
-               perror("FPGA FIFO Overflow Flag");
-               printf("num samples taken = %ld\n",
-                      (long int)(total_bytes_saved+si));
-               while(1);
-             }
-             file_buf[total_bytes_saved + si] = buffer[si];
-           }
-           total_bytes_saved += length;
-         }
-       }
-     }
-     if (progress){
-       fprintf(stderr, "%10.02fs total time %9.3f MiB captured %7.1f kB/s curr rate %7.1f kB/s totalrate %d dropouts\n",
-               progress->totalTime,
-               progress->current.totalBytes / (1024.0 * 1024.0),
-               progress->currentRate / 1024.0,
-               progress->totalRate / 1024.0,
-               n_err);
-     }
-   }
-   return exitRequested ? 1 : 0;
+  /* Array for extraction of samples from buffer */
+  char *conv_buf = (char *)malloc(length*SAMPLES_PER_BYTE*sizeof(char));
+  if (length){
+    if (total_num_bytes_received >= NUM_FLUSH_BYTES){
+      /* Save data to our pipe */
+      if (outputFile) {
+        /*
+         * Convert samples from buffer from signmag to signed and write to 
+         * the pipe. They will be read from the pipe and written to disk in a 
+         * different thread.
+         * Packing of each byte is
+         *   [7:5] : Sample 0
+         *   [4:2] : Sample 1
+         *   [1] : Unused
+         *   [0] : FPGA FIFO Error flag, active low. Usually indicates bytes
+         *         are not being read out of FPGA FIFO quickly enough to avoid
+         *         overflow
+         */
+        for (uint64_t ci = 0; ci < length; ci++){
+          /* Check byte to see if a FIFO error occured */
+          if (FPGA_FIFO_ERROR_CHECK(buffer[ci])) {
+            perror("FPGA FIFO Error Flag");
+            printf("num samples taken = %ld\n",
+                   (long int)(total_bytes_saved+ci));
+            exitRequested = 1;
+          }
+          /* Extract samples from buffer, convert, and store in conv_buf */
+          /* First sample */
+//          conv_buf[ci*2+0] = mapping[(buffer[ci] >> 5) & 0x07];
+          /* Second sample */
+//          conv_buf[ci*2+1] = mapping[(buffer[ci] >> 2) & 0x07];
+          /* Test data */
+          static uint8_t test_data = 0;
+          conv_buf[ci*2+0] = test_data;
+          test_data = (test_data < 62) ? (test_data + 1) : 0;
+          conv_buf[ci*2+1] = test_data;
+          test_data = (test_data < 62) ? (test_data + 1) : 0;
+        }
+        /* Push values into the pipe */
+        pipe_push(pipe_writer,(void *)conv_buf,length*2);
+        total_bytes_saved += length;
+      }
+    }
+    total_num_bytes_received += length;
+  }
+  if (progress){
+    fprintf(stderr, "%10.02fs total time %9.3f MiB captured %7.1f kB/s curr rate %7.1f kB/s totalrate %d dropouts\n",
+            progress->totalTime,
+            progress->current.totalBytes / (1024.0 * 1024.0),
+            progress->currentRate / 1024.0,
+            progress->totalRate / 1024.0,
+            n_err);
+  }
+  return exitRequested ? 1 : 0;
+}
+
+//static void* file_writer(void* pc_ptr){
+//  pipe_consumer_t* reader = pc_ptr;
+//  char buf[WRITE_SLICE_SIZE];
+//  size_t bytes_read;
+//  while (!(exitRequested)){
+//    bytes_read = pipe_pop(reader,buf,WRITE_SLICE_SIZE);
+//    if (bytes_read > 0){
+//      if (fwrite(buf,bytes_read,1,outputFile) != 1){
+//        perror("Write error\n");
+//        exitRequested = 1;
+//      }
+//    }
+//  }
+//  return NULL;
+//}
+
+static void* file_writer(void* pc_ptr){
+  pipe_consumer_t* reader = pc_ptr;
+  char buf[WRITE_SLICE_SIZE];
+  size_t bytes_read = 0;
+  char data_check;
+  while (bytes_read != 1){
+    bytes_read = pipe_pop(reader,&data_check,1);
+  }
+  while (!(exitRequested)){
+    bytes_read = pipe_pop(reader,buf,WRITE_SLICE_SIZE);
+    if (bytes_read > 0){
+      for (uint64_t i=0; i<bytes_read; i++){
+        data_check = (data_check < 62) ? (data_check + 1) : 0;
+        if (buf[i] != data_check) { 
+          printf("test data mismatch reading from pipe!\n");
+          while(1);
+        }
+      }
+    }
+  }
+  return NULL;
 }
 
 int main(int argc, char **argv){
@@ -139,7 +205,7 @@ int main(int argc, char **argv){
        descstring = optarg;
        break;
      default:
-       usage(argv[0]);
+       usage();
      }
    
    if (optind == argc - 1){
@@ -148,7 +214,7 @@ int main(int argc, char **argv){
    }
    else if (optind < argc){
      // Too many extra args
-     usage(argv[0]);
+     usage();
    }
    
    if ((ftdi = ftdi_new()) == 0){
@@ -188,9 +254,17 @@ int main(int argc, char **argv){
        outputFile = of;
    signal(SIGINT, sigintHandler);
 
-   /* Only allocate memory for file buffer if we are going to write to a file */
+   /* Only create pipe if we have a file to write samples to */
    if (outputFile) {
-     file_buf = (char *)malloc(MAX_N_SAMPLES/SAMPLES_PER_BYTE);
+     sample_pipe = pipe_new(sizeof(char),PIPE_SIZE);
+     pipe_writer = pipe_producer_new(sample_pipe);
+     pipe_reader = pipe_consumer_new(sample_pipe);
+     pipe_free(sample_pipe);
+   }
+
+   /* Start thread for writing samples to file */
+   if (outputFile) {
+     pthread_create(&thread, NULL, &file_writer, pipe_reader);
    }
    
    /* Read samples from the device */
@@ -198,39 +272,14 @@ int main(int argc, char **argv){
    if (err < 0 && !exitRequested)
      exit(1);
 
-   /* Write samples to file
-    * Convert samples from buffer from signmag to signed and write to disk in 
-    * slices of CONV_BUF_SIZE
-    * Packing of each byte is
-    *   [7:5] : Sample 0
-    *   [4:2] : Sample 1
-    *   [1] : Unused
-    *   [0] : Error flag (FIFO full, over/underflow), active low
-    */
+   /* Close thread and free pipe pointers */
    if (outputFile) {
-//     conv_buf = (char *)malloc(CONV_BUF_SIZE);
-     char conv_buf[CONV_BUF_SIZE];
-     uint64_t ci = 0, ck = 0, si = 0;
-     uint64_t slice_size = 0;
-     while (ci < total_bytes_saved){
-       si = 0;
-       slice_size = (ci + CONV_BUF_SIZE < total_bytes_saved) ? 
-                    CONV_BUF_SIZE : total_bytes_saved - ci;
-       for (ck = 0; ck < slice_size; ck++){
-         conv_buf[si] = sign_mag_mapping[file_buf[ci+ck]>>5 & 0x07];
-         conv_buf[si+1] = sign_mag_mapping[file_buf[ci+ck]>>2 & 0x07];
-         si+=2;
-       }
-       if (fwrite(conv_buf,slice_size,1,outputFile) != 1){
-         perror("Write error");
-         while(1);
-       }
-       ci += CONV_BUF_SIZE;
-     }
-//     free(conv_buf);
-     free(file_buf);
+     pthread_join(thread,NULL);
+     pipe_producer_free(pipe_writer);
+     pipe_consumer_free(pipe_reader);
    }
    
+   /* Close file */
    if (outputFile) {
      fclose(outputFile);
      outputFile = NULL;

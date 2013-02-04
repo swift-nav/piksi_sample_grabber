@@ -1,6 +1,5 @@
-
 CC = gcc
-CFLAGS = -Wall -Werror -lftd2xx -lftdi1 -std=gnu99
+CFLAGS = -Wall -Werror -lftd2xx -lftdi1 -pthread -std=gnu99 -D_FILE_OFFSET_BITS=64
 
 all: sample_grabber back_to_uart stream_test
 
@@ -11,7 +10,7 @@ back_to_uart : back_to_uart.c Makefile
 	$(CC) back_to_uart.c -o back_to_uart $(CFLAGS)
 
 stream_test : stream_test.c Makefile
-	$(CC) stream_test.c -o stream_test $(CFLAGS)
+	$(CC) stream_test.c -o stream_test pipe/pipe.c $(CFLAGS)
 
 clean:
 	rm -f *.o
