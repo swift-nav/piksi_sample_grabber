@@ -1,19 +1,19 @@
 CC = gcc
 CFLAGS = -Wall -Werror -lftd2xx -lftdi1 -pthread -std=gnu99 -D_FILE_OFFSET_BITS=64
 
-all: sample_grabber back_to_uart stream_test
+all: set_fifo_mode set_uart_mode stream_test
 
-sample_grabber : sample_grabber.c Makefile
-	$(CC) sample_grabber.c -o sample_grabber $(CFLAGS)
+set_fifo_mode : set_fifo_mode.c Makefile
+	$(CC) set_fifo_mode.c -o set_fifo_mode $(CFLAGS)
 
-back_to_uart : back_to_uart.c Makefile
-	$(CC) back_to_uart.c -o back_to_uart $(CFLAGS)
+set_uart_mode : set_uart_mode.c Makefile
+	$(CC) set_uart_mode.c -o set_uart_mode $(CFLAGS)
 
 stream_test : stream_test.c Makefile
 	$(CC) stream_test.c -o stream_test pipe/pipe.c $(CFLAGS)
 
 clean:
 	rm -f *.o
-	rm sample_grabber
-	rm back_to_uart
+	rm set_fifo_mode
+	rm set_uart_mode
 	rm stream_test

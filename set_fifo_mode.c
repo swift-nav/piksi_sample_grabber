@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Swift Navigation Inc.
+ * Copyright (C) 2012-2013 Swift Navigation Inc.
  * Contact: Fergus Noble <fergus@swift-nav.com>
  *
  * This source is subject to the license found in the file 'LICENSE' which must
@@ -49,7 +49,7 @@ void exit_handler();
 
 void print_usage()
 {
-  printf("Usage: sample_grabber [options] file\n"
+  printf("Usage: set_fifo_mode [options] file\n"
          "Options:\n"
          "  [-N]             Disable raw value mapping.\n"
          "                   This disables the mapping of values from raw\n"
@@ -287,7 +287,7 @@ int main(int argc, char *argv[])
     if (verbose > 0)
       printf("Reset device\n");
     
-    printf("Please unplug and replug your device and run sample_grabber again\n");
+    printf("Please unplug and replug your device and run set_fifo_mode again\n");
     return EXIT_SUCCESS;
   }
 

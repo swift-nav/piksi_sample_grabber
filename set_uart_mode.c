@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Swift Navigation Inc.
+ * Copyright (C) 2012-2013 Swift Navigation Inc.
  * Contact: Fergus Noble <fergus@swift-nav.com>
  *          Colin Beighley <colin@swift-nav.com>
  *
@@ -19,7 +19,7 @@
 
 void print_usage()
 {
-  printf("Usage: back_to_uart [options]\n"
+  printf("Usage: set_uart_mode [options]\n"
          "Options:\n"
          "  [-p]  Don't prompt user as to whether device being written to is correct.\n"
          "  [-h]  Print this information.\n"
