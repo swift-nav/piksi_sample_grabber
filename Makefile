@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Werror -lftd2xx -lftdi1 -pthread -std=gnu99 -D_FILE_OFFSET_BITS=64
+CFLAGS = -Wall -Werror -lftd2xx -lftdi1 -pthread -std=gnu99 -D_FILE_OFFSET_BITS=64 -Iinclude
 
 all: set_fifo_mode set_uart_mode sample_grabber
 
@@ -13,6 +13,6 @@ sample_grabber : sample_grabber.c Makefile
 	$(CC) sample_grabber.c -o sample_grabber pipe/pipe.c $(CFLAGS)
 
 clean:
-	rm set_fifo_mode
-	rm set_uart_mode
-	rm sample_grabber
+	rm -f set_fifo_mode
+	rm -f set_uart_mode
+	rm -f sample_grabber
