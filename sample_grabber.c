@@ -1,20 +1,34 @@
-/* stream_test.c
+/*
+ * Copyright (C) 2013 Swift Navigation Inc.
  *
- * Test reading  from FT2232H in synchronous FIFO mode.
+ * Contacts: Fergus Noble <fergus@swift-nav.com>
+ *           Colin Beighley <colin@swift-nav.com>
  *
- * The FT2232H must supply data due to an appropriate circuit
+ * This source is subject to the license found in the file 'LICENSE' which must
+ * be be distributed together with this source. All other rights reserved.
  *
- * To check for skipped block with appended code, 
- *     a structure as follows is assumed
- * 1* uint32_t num (incremented in 0x4000 steps)
- * 3* uint32_t dont_care
+ * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,
+ * EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  *
- * After start, data will be read in streaming until the program is aborted
- * Progess information wil be printed out
- * If a filename is given on the command line, the data read will be
- * written to that file
+ *   "sample_grabber.c"
  *
+ *   Purpose : Allows streaming of raw samples from MAX2769 RF Frontend for 
+ *             post-processing and analysis. Samples are 3-bit and saved to 
+ *             given file one sample per byte as signed integers.
+ * 
+ *   Usage :   After running set_fifo_mode to set the FT232H on the Piksi to 
+ *             sample streaming mode, use sample_grabber via
+ *             ./sample_grabber [filename]
+ *             End sample capture with ^C (CTRL+C).
+ *             After finishing the sample capture, run set_uart_mode to set
+ *             the FT232H on the Piksi back to UART mode for normal operation.
+ *
+ *   Based on the example "stream_test.c" in libftdi, updated in 2010 by Uwe 
+ *   Bonnes <bon@elektron.ikp.physik.tu-darmstadt.de> for libftdi and 
+ *   originally written by Micah Dowty <micah@navi.cx> in 2009.
  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -69,7 +83,7 @@ sigintHandler(int signum)
 static void
 usage(void)
 {
-  printf("  Usage: ./stream_test [filename] \n"
+  printf("  Usage: ./sample_grabber [filename] \n"
          "  If some filename is given, write data read to that file\n"
          "  Progess information is printed each second\n"
          "  Abort with ^C\n"
