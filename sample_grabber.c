@@ -63,7 +63,7 @@ static int exitRequested = 0;
 
 /* Pipe specific structs and pointers */
 static pipe_t *sample_pipe;
-static pthread_t thread;
+static pthread_t file_writing_thread;
 static pipe_producer_t* pipe_writer;
 static pipe_consumer_t* pipe_reader;
 
@@ -247,17 +247,17 @@ int main(int argc, char **argv){
 
    /* Start thread for writing samples to file */
    if (outputFile) {
-     pthread_create(&thread, NULL, &file_writer, pipe_reader);
+     pthread_create(&file_writing_thread, NULL, &file_writer, pipe_reader);
    }
    
-   /* Read samples from the device */
+   /* Read samples from the Piksi. ftdi_readstream blocks until user hits ^C */
    err = ftdi_readstream(ftdi, readCallback, NULL, 8, 256);
    if (err < 0 && !exitRequested)
      exit(1);
 
    /* Close thread and free pipe pointers */
    if (outputFile) {
-     pthread_join(thread,NULL);
+     pthread_join(file_writing_thread,NULL);
      pipe_producer_free(pipe_writer);
      pipe_consumer_free(pipe_reader);
    }
@@ -269,7 +269,7 @@ int main(int argc, char **argv){
    }
    fprintf(stderr, "Capture ended.\n");
    
-   if (ftdi_set_bitmode(ftdi,  0xff, BITMODE_RESET) < 0){
+   if (ftdi_set_bitmode(ftdi, 0xff, BITMODE_RESET) < 0){
      fprintf(stderr,"Can't set synchronous fifo mode, Error %s\n",ftdi_get_error_string(ftdi));
      ftdi_usb_close(ftdi);
      ftdi_free(ftdi);
