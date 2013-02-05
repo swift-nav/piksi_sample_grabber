@@ -53,10 +53,8 @@
 
 static uint64_t total_bytes_saved = 0;
 
-/* 
- * Samples we get from the device are {sign,msb mag,lsb mag}. Can index this 
- * array with each received signmag sample to convert to signed (signed int 8)
- */
+/* Samples from the device are {sign,msb mag,lsb mag}. Can index mapping */
+/* with each received signmag sample to convert to signed (signed int 8) */
 static const char mapping[8] = {1, 3, 5, 7, -1, -3, -5, -7};
 
 static FILE *outputFile;
