@@ -57,12 +57,11 @@ int main(int argc, char *argv[])
 
   FT_STATUS ft_status;
   FT_HANDLE ft_handle;
-//  FT_PROGRAM_DATA eeprom_data;
   DWORD num_devs;
   DWORD VID, PID;
   int iport = 0;
 
-  //See how many devices are plugged in, fail if greater than 1
+  /* See how many devices are plugged in, fail if greater than 1 */
   printf("Creating device info list\n");
   ft_status = FT_CreateDeviceInfoList(&num_devs);
   if (ft_status != FT_OK){
@@ -70,13 +69,13 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
   printf("Making sure only one FTDI device is plugged in\n");
-  //Check that there aren't more than 1 device plugged in
+  /* Check that there aren't more than 1 device plugged in */
   if (num_devs > 1){
     fprintf(stderr,"ERROR : More than one FTDI device plugged in\n");
     return EXIT_FAILURE;
   }
   
-  //Get VID/PID from FTDI device
+  /* Get VID/PID from FTDI device */
   printf("Getting VID/PID from device\n");
   ft_status = FT_GetVIDPID(&VID,&PID);
   if (ft_status != FT_OK){
@@ -84,7 +83,7 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
   printf("    VID = %04x, PID = %04x\n",VID,PID);
-  //Set the VID/PID found
+  /* Set the VID/PID found */
   printf("Setting VID/PID\n");
   ft_status = FT_SetVIDPID(VID,PID);
   if (ft_status != FT_OK){
@@ -92,7 +91,7 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  //Get info about the device and print to user
+  /* Get info about the device and print to user */
   DWORD lpdw_flags;
   DWORD lpdw_type;
   DWORD lpdw_id;
@@ -105,12 +104,12 @@ int main(int argc, char *argv[])
   printf("     Flags         : 0x%x\n", lpdw_flags);
   printf("     Type          : 0x%x\n", lpdw_type);
   printf("     ID            : 0x%x\n", lpdw_id);
-//  if (ft_status != FT_OK){
-//    fprintf(stderr,"ERROR : Failed to get device info, ft_status = %d\n",ft_status);
-//    return EXIT_FAILURE;
-//  }
+  if (ft_status != FT_OK){
+    fprintf(stderr,"ERROR : Failed to get device info, ft_status = %d\n",ft_status);
+    return EXIT_FAILURE;
+  }
 
-  //Ask user if this is the correct device
+  /* Ask user if this is the correct device */
   if (dont_prompt == 0) {
     char correct_device;
     printf("Is this the correct device? (y/n) : ");
@@ -125,11 +124,11 @@ int main(int argc, char *argv[])
     }
   }
 
-  //Open the device
+  /* Open the device */
   printf("Attempting to open device using read VID/PID...");
   ft_status = FT_Open(iport, &ft_handle);
-  //If that didn't work, try some other likely VID/PID combos
-  //Try 0403:8398
+  /* If that didn't work, try some other likely VID/PID combos */
+  /* Try 0403:8398 */
   if (ft_status != FT_OK){
     printf("FAILED\nTrying VID=0x0403, PID=0x8398...");
     ft_status = FT_SetVIDPID(0x0403,0x8398);
@@ -139,7 +138,7 @@ int main(int argc, char *argv[])
     }
     ft_status = FT_Open(iport, &ft_handle);
   }
-  //Try 0403:6014
+  /* Try 0403:6014 */
   if (ft_status != FT_OK){
     printf("FAILED\nTrying VID=0x0403, PID=0x6014...");
     ft_status = FT_SetVIDPID(0x0403,0x6014);
@@ -149,7 +148,7 @@ int main(int argc, char *argv[])
     }
     ft_status = FT_Open(iport, &ft_handle);
   }
-  //Exit program if we still haven't opened the device
+  /* Exit program if we still haven't opened the device */
   if (ft_status != FT_OK){
     printf("FAILED\n");
     fprintf(stderr,"ERROR : Failed to open device : ft_status = %d\nHave you tried (sudo rmmod ftdi_sio)?\n",ft_status);
@@ -157,7 +156,6 @@ int main(int argc, char *argv[])
   }
   printf("SUCCESS\n");
   
-
   /* Erase the EEPROM to set the device back to UART mode */
   printf("Erasing device EEPROM\n");
   ft_status = FT_EraseEE(ft_handle);
@@ -165,25 +163,6 @@ int main(int argc, char *argv[])
     fprintf(stderr, "ERROR: Device EEPROM could not be erased : ft_status = %d\n", ft_status);
     return EXIT_FAILURE;
   }
-
-  /* Assign appropriate values to eeprom data */
-//  eeprom_data.Signature1 = 0x00000000;
-//  eeprom_data.Signature2 = 0xffffffff;
-////  eeprom_data.Version = 0; //FT232H
-//  eeprom_data.VendorId = 0x0403;        
-//  eeprom_data.ProductId = 0x6014;
-//  eeprom_data.Manufacturer = "FTDI";
-//  eeprom_data.ManufacturerId = "FT";
-//  eeprom_data.Description = "Piksi UART over USB";
-////  eeprom_data.SerialNumber = NULL;    // if fixed, or NULL
-
-  /* Program device EEPROM */
-//  printf("Programming device EEPROM\n");
-//  ft_status = FT_EE_Program(ft_handle, &eeprom_data);
-//  if(ft_status != FT_OK) {
-//    fprintf(stderr,"ERROR : Failed to program device EEPROM : ft_status = %d\n",ft_status);
-//    return EXIT_FAILURE;
-//  }
 
   /* Reset the device */
   printf("Resetting device\n");
