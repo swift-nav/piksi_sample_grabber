@@ -65,11 +65,7 @@
 #define FPGA_FIFO_ERROR_CHECK(byte) (!(byte & 0x01))
 
 static uint64_t total_unflushed_bytes = 0;
-static long int bytes_wanted = 0; /* 0 means uninitialized */
-
-/* Samples from the device are {sign,msb mag,lsb mag}. Can index mapping */
-/* with each received signmag sample to convert to signed (signed int 8) */
-static const char mapping[8] = {1, 3, 5, 7, -1, -3, -5, -7};
+static long int bytes_wanted = 0; /* 0 means uninitialized, no limit */
 
 static FILE *outputFile = NULL;
 
@@ -167,40 +163,30 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
    * - it is necessary to do this to ensure we receive continuous samples.
    */
   static uint64_t total_num_bytes_received = 0;
-
   /* Array for extraction of samples from buffer */
-  char *conv_buf = (char *)malloc(length*SAMPLES_PER_BYTE*sizeof(char));
   if (length){
     if (total_num_bytes_received >= NUM_FLUSH_BYTES){
-      /* Save data to our pipe */
-      if (outputFile) {
-        /*
-         * Convert samples from buffer from signmag to signed and write to 
-         * the pipe. They will be read from the pipe and written to disk in a 
-         * different thread.
-         * Packing of each byte is
-         *   [7:5] : Sample 0
-         *   [4:2] : Sample 1
-         *   [1] : Unused
-         *   [0] : FPGA FIFO Error flag, active low. Usually indicates bytes
-         *         are not being read out of FPGA FIFO quickly enough to avoid
-         *         overflow
-         */
-        for (uint64_t ci = 0; ci < length; ci++){
-          /* Check byte to see if a FIFO error occured */
-          if (FPGA_FIFO_ERROR_CHECK(buffer[ci])) {
-            printf("FPGA FIFO Error Flag at sample number %ld\n",
-                   (long int)(total_unflushed_bytes+ci));
-            exitRequested = 1;
-          }
-          /* Extract samples from buffer, convert, and store in conv_buf */
-          /* First sample */
-          conv_buf[ci*2+0] = mapping[(buffer[ci] >> 5) & 0x07];
-          /* Second sample */
-          conv_buf[ci*2+1] = mapping[(buffer[ci] >> 2) & 0x07];
+      /*
+       * Check each byte for the FPGA FIFO Error Flag, and exit if it is found
+       * Packing of each byte is
+       *   [7:5] : Sample 0 (sign, mag msb, mag lsb)
+       *   [4:2] : Sample 1 (sign, mag msb, mag lsb)
+       *   [1] : Unused
+       *   [0] : FPGA FIFO Error flag, active low. Usually indicates bytes
+       *         are not being read out of FPGA FIFO quickly enough to avoid
+       *         overflow
+       */
+      for (uint64_t ci = 0; ci < length; ci++){
+        /* Check byte to see if a FIFO error occured */
+        if (FPGA_FIFO_ERROR_CHECK(buffer[ci])) {
+          fprintf(stderr,"FPGA FIFO Error Flag at byte number %ld\n",
+                 (long int)(total_unflushed_bytes+ci));
+          exitRequested = 1;
         }
-        /* Push values into the pipe */
-        pipe_push(pipe_writer,(void *)conv_buf,length*2);
+      }
+      if (outputFile) {
+        /* Save data to our pipe */
+        pipe_push(pipe_writer,(void *)buffer,length);
       }
       total_unflushed_bytes += length;
     }
@@ -234,7 +220,7 @@ static void* file_writer(void* pc_ptr){
     bytes_read = pipe_pop(reader,buf,WRITE_SLICE_SIZE);
     if (bytes_read > 0){
       if (fwrite(buf,bytes_read,1,outputFile) != 1){
-        perror("Write error\n");
+        fprintf(stderr,"Error in writing to file\n");
         exitRequested = 1;
       }
     }
