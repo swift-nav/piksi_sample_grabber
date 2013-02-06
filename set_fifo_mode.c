@@ -17,10 +17,13 @@
  *             FIFO mode in order to stream raw samples from the RF frontend
  *             through the FPGA. Must be used before running sample_grabber.
  *
- *   Usage :   ./set_fifo_mode [-v]
- *             Plug in device and run ./set_fifo_mode. You may have to use
- *             sudo rmmod ftdi_sio first. -v for more information on what is
- *             happening.
+ *   Usage :   Plug in device and run set_fifo_mode. You may have to use
+ *             sudo rmmod ftdi_sio first. 
+ *
+ *   Options : ./set_fifo_mode [-p] [-v] [-h]
+ *             [--prompt -p]    Don't prompt to confirm that device is correct.
+ *             [--verbose -v]   Print more verbose output.
+ *             [--help -h]      Print this information.
  */
 
 #include <stdio.h>
@@ -42,7 +45,7 @@ FT_PROGRAM_DATA eeprom_data;
 
 void print_usage()
 {
-  printf("Usage: set_fifo_mode [options]\n"
+  printf("Usage: set_fifo_mode [-p] [-v] [-h]\n"
          "Options:\n"
          "  [--prompt -p]    Don't prompt to confirm that device is correct.\n"
          "  [--verbose -v]   Print more verbose output.\n"

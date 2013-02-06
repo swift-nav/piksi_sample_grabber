@@ -17,11 +17,13 @@
  *             for normal operation. Should be used after running 
  *             sample_grabber.
  *
- *   Usage :   ./set_uart_mode [-v] [-p]
- *             Plug in device and run ./set_uart_mode. You may have to use
- *             sudo rmmod ftdi_sio first. -v for more information on what is
- *             happening. -p to disregard prompting if device we are about to
- *             configure is correct.
+ *   Usage :   Plug in device and run set_uart_mode. You may have to use
+ *             sudo rmmod ftdi_sio first.
+ *
+ *   Options : ./set_uart_mode [-p] [-v] [-h]
+ *             [--prompt -p]    Don't prompt to confirm that device is correct.
+ *             [--verbose -v]   Print more verbose output.
+ *             [--help -h]      Print this information.
  */
 
 #include <stdio.h>
@@ -41,7 +43,7 @@ int dont_prompt = 0;
 
 void print_usage()
 {
-  printf("Usage: set_uart_mode [options]\n"
+  printf("Usage: set_uart_mode [-p] [-v] [-h]\n"
          "Options:\n"
          "  [--prompt -p]    Don't prompt to confirm that device is correct.\n"
          "  [--verbose -v]   Print more verbose output.\n"
