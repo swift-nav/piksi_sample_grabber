@@ -1,6 +1,17 @@
-sample_grabber : receives an arbitrary number of raw samples from the Piksi,
+sample_grabber : Receives an arbitrary number of raw samples from the Piksi,
                  using the onboard FT232H in FIFO mode
 
-back_to_uart : configures the FT232H EEPROM for VCP mode for normal operation,
-               to be used after running sample_grabber or if the EEPROM is 
-               blank/corrupted
+set_fifo_mode : Writes settings to EEPROM attached to FT232H for synchronous
+                FIFO mode in order to stream raw samples from the RF frontend
+                through the FPGA. Must be used before running sample_grabber.
+
+set_uart_mode : Erases EEPROM attached to FT232H to set the FT232H in UART mode
+                for normal operation. Should be used after running 
+                sample_grabber.
+
+Building : to build the programs run "make"
+
+Dependencies : sample_grabber needs libftdi v1.0.
+                   http://www.intra2net.com/en/developer/libftdi/download.php
+               set_uart_mode and set_fifo_mode need the D2XX drivers from FTDI.
+                   http://www.ftdichip.com/Drivers/D2XX.htm
