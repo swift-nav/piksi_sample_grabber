@@ -65,11 +65,7 @@
 #define FPGA_FIFO_ERROR_CHECK(byte) (!(byte & 0x01))
 
 static uint64_t total_unflushed_bytes = 0;
-static long int bytes_wanted = 0; /* 0 means uninitialized */
-
-/* Samples from the device are {sign,msb mag,lsb mag}. Can index mapping */
-/* with each received signmag sample to convert to signed (signed int 8) */
-static const char mapping[8] = {1, 3, 5, 7, -1, -3, -5, -7};
+static long int bytes_wanted = 0; /* 0 means uninitialized, no limit */
 
 static FILE *outputFile = NULL;
 
@@ -167,9 +163,7 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
    * - it is necessary to do this to ensure we receive continuous samples.
    */
   static uint64_t total_num_bytes_received = 0;
-
   /* Array for extraction of samples from buffer */
-  char *conv_buf = (char *)malloc(length*SAMPLES_PER_BYTE*sizeof(char));
   if (length){
     if (total_num_bytes_received >= NUM_FLUSH_BYTES){
       /* Save data to our pipe */
@@ -193,14 +187,9 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
                    (long int)(total_unflushed_bytes+ci));
             exitRequested = 1;
           }
-          /* Extract samples from buffer, convert, and store in conv_buf */
-          /* First sample */
-          conv_buf[ci*2+0] = mapping[(buffer[ci] >> 5) & 0x07];
-          /* Second sample */
-          conv_buf[ci*2+1] = mapping[(buffer[ci] >> 2) & 0x07];
         }
         /* Push values into the pipe */
-        pipe_push(pipe_writer,(void *)conv_buf,length*2);
+        pipe_push(pipe_writer,(void *)buffer,length);
       }
       total_unflushed_bytes += length;
     }
@@ -234,7 +223,7 @@ static void* file_writer(void* pc_ptr){
     bytes_read = pipe_pop(reader,buf,WRITE_SLICE_SIZE);
     if (bytes_read > 0){
       if (fwrite(buf,bytes_read,1,outputFile) != 1){
-        perror("Write error\n");
+        fprintf(stderr,"Error in writing to file\n");
         exitRequested = 1;
       }
     }
