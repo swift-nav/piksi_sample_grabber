@@ -1,4 +1,6 @@
 /*
+ * Copyright (C) 2009 Micah Dowty
+ * Copyright (C) 2010 Uwe Bonnes
  * Copyright (C) 2013 Swift Navigation Inc.
  *
  * Contacts: Fergus Noble <fergus@swift-nav.com>
@@ -16,7 +18,7 @@
  *   Purpose : Allows streaming of raw samples from MAX2769 RF Frontend for 
  *             post-processing and analysis. Samples are 3-bit and saved to 
  *             given file one sample per byte as signed integers.
- * 
+ *
  *   Usage :   After running set_fifo_mode to set the FT232H on the Piksi to 
  *             sample streaming mode, use sample_grabber via
  *             ./sample_grabber [filename]
@@ -31,9 +33,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
-#include <unistd.h>
 #include <getopt.h>
 #include <signal.h>
 #include <errno.h>
@@ -81,14 +81,15 @@ sigintHandler(int signum)
 static void
 usage(void)
 {
-  printf("  Usage: ./sample_grabber [filename] \n"
-         "  If some filename is given, write data read to that file\n"
-         "  Progess information is printed each second\n"
-         "  Abort with ^C\n"
-         "  Copyright (C) 2009 Micah Dowty <micah@navi.cx>\n"
-         "  Adapted for libftdi (C) 2010 Uwe Bonnes <bon@elektron.ikp.physik.tu-darmstadt.de>\n"
-         "  Adapted for use with the Piksi (C) 2013 Swift Navigation <colin@swift-nav.com>\n"
-         );
+  printf(
+  "Usage: ./sample_grabber [filename] \n"
+  "       If some filename is given, write data read to that file. Progess\n"
+  "       information is printed each second. End sample capture with ^C.\n"
+  "Note : set_fifo_mode must be run before sample_grabber to configure the USB\n"
+  "       hardware on the device for FIFO mode. Run set_uart_mode after\n"
+  "       sample_grabber to set the device back to UART mode for normal\n"
+  "       operation.\n"
+  );
   exit(1);
 }
 
@@ -179,13 +180,11 @@ int main(int argc, char **argv){
    int option_index;
    static struct option long_options[] = {{NULL},};
 
-   while ((c = getopt_long(argc, argv, "P:n", long_options, &option_index)) !=- 1)
+   while ((c = getopt_long(argc, argv, "h", long_options, &option_index)) !=- 1)
      switch (c) 
      {
-     case -1:
-       break;
-     case 'P':
-       descstring = optarg;
+     case 'h':
+       usage();
        break;
      default:
        usage();
@@ -269,6 +268,7 @@ int main(int argc, char **argv){
    }
    fprintf(stderr, "Capture ended.\n");
    
+   /* Clean up */
    if (ftdi_set_bitmode(ftdi, 0xff, BITMODE_RESET) < 0){
      fprintf(stderr,"Can't set synchronous fifo mode, Error %s\n",ftdi_get_error_string(ftdi));
      ftdi_usb_close(ftdi);
