@@ -1,0 +1,1 @@
+Remove dependency on FTDI D2XX drivers by changing set_fifo_mode and set_uart_mode to use libftdi1
