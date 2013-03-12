@@ -56,7 +56,7 @@
 #define NUM_FLUSH_BYTES 50000
 /* Number of samples in each byte received (regardless of how they're packed)*/
 #define SAMPLES_PER_BYTE 1
-/* Number of bytes to read out of FIFO and write to disk at a time */
+/* Number of bytes to read out of pipe and write to disk at a time */
 #define WRITE_SLICE_SIZE 50 
 /* Maximum number of elements in pipe - 0 means size is unconstrained */
 #define PIPE_SIZE 0
