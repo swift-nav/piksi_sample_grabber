@@ -256,6 +256,10 @@ int main(int argc, char **argv){
     fprintf(stdout,"No -s argument specified, using size of file instead : %lu\n", num_samples_to_send);
   }
   rewind(fp);
+  /* Floor number of samples to nearest (lower) integer number of transfers to
+     number requested */
+  long unsigned int num_total_transfers = (num_samples_to_send - (num_samples_to_send % TRANSFER_SIZE)) / TRANSFER_SIZE;
+  fprintf(stdout,"Total samples sent will be %lu : %lu transfers with %d samples per transfer\n", num_total_transfers*TRANSFER_SIZE,num_total_transfers,TRANSFER_SIZE);
 
   /* Set up handler for CTRL+C */
   signal(SIGINT, sigintHandler);
@@ -267,8 +271,7 @@ int main(int argc, char **argv){
     return EXIT_FAILURE;
   }
 
-   unsigned int num_tcs = 100;
-   unsigned int bytes_to_read = TRANSFER_SIZE*num_tcs;
+   unsigned int bytes_to_read = TRANSFER_SIZE*num_total_transfers;
    unsigned char *write_data = malloc(sizeof(char)*bytes_to_read);
    unsigned int bytes_read = fread(write_data, 1, bytes_to_read, fp);
    if (bytes_read != bytes_to_read) {
@@ -283,48 +286,32 @@ int main(int argc, char **argv){
      write_data[i] |= (i % 7) << 2; //have data count from 0 to 6 then wrap
      write_data[i] |= 0x01;
    }
-   struct ftdi_transfer_control* tc[num_tcs];
+   struct ftdi_transfer_control* tc[num_total_transfers];
    //insert reset fifo flag
    write_data[0] = 0x00;
    tc[0] = ftdi_write_data_submit(ftdi, write_data, TRANSFER_SIZE);
    //mask reset fifo flag
    write_data[0] |= 0x01;
-   printf("first and last 5 of write data starting at %d = ",0);
-   for (uint32_t k=0; k<5; k++){
-     printf("%d ",((write_data[k] & 0x1C) >> 2));
-   }
-   for (int32_t k=-5; k<0; k++){
-     printf("%d ",((write_data[TRANSFER_SIZE + k] & 0x1C) >> 2));
-   }
-   printf("\n");
-   for (uint32_t i=1; i<num_tcs; i++){
+   for (uint32_t i=1; i<num_total_transfers; i++){
      tc[i] = ftdi_write_data_submit(ftdi, write_data + i*TRANSFER_SIZE, TRANSFER_SIZE);
-     printf("first and last 5 of write data starting at %d = ",i);
-     for (uint32_t k=0; k<5; k++){
-       printf("%d ",(((write_data + i*TRANSFER_SIZE)[k] & 0x1C) >> 2));
-     }
-     for (int32_t k=-5; k<0; k++){
-       printf("%d ",(((write_data + i*TRANSFER_SIZE)[TRANSFER_SIZE + k] & 0x1C) >> 2));
-     }
-     printf("\n");
-   }
+    }
    if (ftdi_set_bitmode(ftdi,  0xff, BITMODE_SYNCFF) < 0){
      fprintf(stderr,"Can't set synchronous fifo mode: %s\n",
              ftdi_get_error_string(ftdi));
    }
 
    printf("waiting for xfers to finish\n");
-   for (uint32_t i = 0; i<num_tcs; i++){
+   for (uint32_t i = 0; i<num_total_transfers; i++){
      int rc = 0;
-     printf("before while loop\n");
      while((rc = ftdi_transfer_data_done(tc[i])) <= 0){
-       printf("in while loop\n");
+//       printf("in while loop\n");
 //        if (exitRequested) break;
-       if (rc < 0)
-         printf("rc[%d] = %d\n", i, rc);
+//       if (rc < 0)
+//         printf("rc[%d] = %d\n", i, rc);
      }
-     printf("Xfer %d done\n", i);
+//     printf("Xfer %d done\n", i);
    }
+   printf("Finished transfers\n");
 
    if (verbose) {
      printf("Sample pushing ended.\n");
