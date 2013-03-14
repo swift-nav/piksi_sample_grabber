@@ -369,7 +369,7 @@ int main(int argc, char **argv){
      //mask reset fifo flag
      write_data[i] &= 0x00; //have data count from 0 to 6 then wrap
      write_data[i] |= (i % 7) << 5; //have data count from 0 to 6 then wrap
-     write_data[i] |= 0x04;
+     write_data[i] |= 0x01;
 //     printf("write_data[%d] = %02x\n",i,write_data[i]);
    }
 
@@ -379,7 +379,7 @@ int main(int argc, char **argv){
    write_data[0] = 0x00;
    tc[0] = ftdi_write_data_submit(ftdi, write_data, chunksize);
    //mask reset fifo flag
-   write_data[0] |= 0x04;
+   write_data[0] |= 0x01;
    printf("first and last 5 of write data starting at %d = ",0);
    for (uint32_t k=0; k<5; k++){
      printf("%d ",((write_data[k] & 0xF0) >> 5));
