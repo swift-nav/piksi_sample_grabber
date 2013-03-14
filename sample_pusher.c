@@ -52,17 +52,11 @@
 #include "ftdi.h"
 #include "pipe/pipe.h"
 
-/* Number of bytes to initially read out of device without saving to file */
-#define NUM_FLUSH_BYTES 50000
-/* Number of samples in each byte received (regardless of how they're packed)*/
-#define SAMPLES_PER_BYTE_READ 1
-/* Number of bytes to read out of FIFO and write to disk at a time */
-#define WRITE_SLICE_SIZE 50 
-/* Maximum number of elements in pipe - 0 means size is unconstrained */
-#define PIPE_SIZE 0
 
-/* FPGA FIFO Error Flag is 0th bit, active low */
-#define FPGA_FIFO_ERROR_CHECK(byte) (!(byte & 0x01))
+/* Number of bytes to transfer to device per transfer */
+#define TRANSFER_SIZE 4096
+/* Number of samples in each byte read from file */
+#define SAMPLES_PER_BYTE_READ 1
 
 static FILE *inputFile = NULL;
 
@@ -263,9 +257,9 @@ int main(int argc, char **argv){
   }
   rewind(fp);
 
-   signal(SIGINT, sigintHandler);
+  /* Set up handler for CTRL+C */
+  signal(SIGINT, sigintHandler);
 
-   
    unsigned int chunksize = 4096;
 //   unsigned int chunksize = 256;
    unsigned int num_tcs = 10000;
@@ -296,20 +290,20 @@ int main(int argc, char **argv){
    write_data[0] |= 0x01;
    printf("first and last 5 of write data starting at %d = ",0);
    for (uint32_t k=0; k<5; k++){
-     printf("%d ",((write_data[k] & 0xF0) >> 5));
+     printf("%d ",((write_data[k] & 0x1C) >> 2));
    }
    for (int32_t k=-5; k<0; k++){
-     printf("%d ",((write_data[chunksize + k] & 0xF0) >> 5));
+     printf("%d ",((write_data[chunksize + k] & 0x1C) >> 2));
    }
    printf("\n");
    for (uint32_t i=1; i<num_tcs; i++){
      tc[i] = ftdi_write_data_submit(ftdi, write_data + i*chunksize, chunksize);
      printf("first and last 5 of write data starting at %d = ",i);
      for (uint32_t k=0; k<5; k++){
-       printf("%d ",(((write_data + i*chunksize)[k] & 0xF0) >> 5));
+       printf("%d ",(((write_data + i*chunksize)[k] & 0x1C) >> 2));
      }
      for (int32_t k=-5; k<0; k++){
-       printf("%d ",(((write_data + i*chunksize)[chunksize + k] & 0xF0) >> 5));
+       printf("%d ",(((write_data + i*chunksize)[chunksize + k] & 0x1C) >> 2));
      }
      printf("\n");
    }
