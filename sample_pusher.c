@@ -368,7 +368,7 @@ int main(int argc, char **argv){
    for (uint32_t i=0; i<bytes_read; i++){
      //mask reset fifo flag
      write_data[i] &= 0x00; //have data count from 0 to 6 then wrap
-     write_data[i] |= (i % 7) << 5; //have data count from 0 to 6 then wrap
+     write_data[i] |= (i % 7) << 2; //have data count from 0 to 6 then wrap
      write_data[i] |= 0x01;
 //     printf("write_data[%d] = %02x\n",i,write_data[i]);
    }
