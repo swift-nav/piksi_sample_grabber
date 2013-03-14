@@ -64,18 +64,9 @@
 /* FPGA FIFO Error Flag is 0th bit, active low */
 #define FPGA_FIFO_ERROR_CHECK(byte) (!(byte & 0x01))
 
-//static uint64_t total_unflushed_bytes = 0;
-static long int bytes_wanted = 0; /* 0 means uninitialized */
-
 static FILE *inputFile = NULL;
 
 static int exitRequested = 0;
-
-/* Pipe specific structs and pointers */
-//static pipe_t *sample_pipe;
-//static pthread_t file_writing_thread;
-//static pipe_producer_t* pipe_writer;
-//static pipe_consumer_t* pipe_reader;
 
 static int verbose = 0;
 
@@ -178,33 +169,33 @@ int main(int argc, char **argv){
   opterr = 0;
   int c;
   int option_index = 0;
-  while ((c = getopt_long(argc, argv, "s:vh", long_opts, &option_index)) != -1)
+  long int num_samples_to_send = -1;
+  while ((c = getopt_long(argc, argv, "vhs:", long_opts, &option_index)) != -1)
     switch (c) {
       case 'v':
         verbose++;
         break;
       case 's': {
-        long int samples_wanted = parse_size(optarg);
-        if (samples_wanted <= 0) {
+        num_samples_to_send = parse_size(optarg);
+        if (num_samples_to_send <= 0) {
           fprintf(stderr, "Invalid size argument.\n");
-          return EXIT_FAILURE;
-        }
-        bytes_wanted = samples_wanted / SAMPLES_PER_BYTE;
-        if (bytes_wanted <= 0) {
-          fprintf(stderr, "Invalid number of bytes to transfer.\n");
           return EXIT_FAILURE;
         }
         break;
       }
-      case 'h':
+      case 'h': {
         print_usage();
         return EXIT_SUCCESS;
-      case '?':
+        break;
+      }
+      case '?': {
         if (optopt == 's')
           fprintf(stderr, "Transfer size option requires an argument.\n");
         else
           fprintf(stderr, "Unknown option `-%c'.\n", optopt);
         return EXIT_FAILURE;
+        break;
+      }
       default:
         abort();
      }
@@ -255,21 +246,14 @@ int main(int argc, char **argv){
      fprintf(stderr,"Can't open sample file %s, Error %s\n", infile, strerror(errno));
    signal(SIGINT, sigintHandler);
 
-//   sample_pipe = pipe_new(sizeof(char),PIPE_SIZE);
-//   pipe_writer = pipe_producer_new(sample_pipe);
-//   pipe_reader = pipe_consumer_new(sample_pipe);
-//   pipe_free(sample_pipe);
-
-   /* Start thread for writing samples to file */
-//   pthread_create(&file_writing_thread, NULL, &file_writer, pipe_reader);
    
    unsigned int chunksize = 4096;
 //   unsigned int chunksize = 256;
    unsigned int num_tcs = 10000;
    err = ftdi_write_data_set_chunksize(ftdi,chunksize);
-//   if (err != 0) {
-//     printf("ftdi_write_data_set_chunksize returned an error = %d\n", err);
-//   }
+   if (err != 0) {
+     printf("ftdi_write_data_set_chunksize returned an error = %d\n", err);
+   }
    unsigned int bytes_to_read = chunksize*num_tcs;
    unsigned char *write_data = malloc(sizeof(char)*bytes_to_read);
    unsigned int bytes_read = fread(write_data, 1, bytes_to_read, fp);
@@ -284,10 +268,7 @@ int main(int argc, char **argv){
      write_data[i] &= 0x00; //have data count from 0 to 6 then wrap
      write_data[i] |= (i % 7) << 2; //have data count from 0 to 6 then wrap
      write_data[i] |= 0x01;
-//     printf("write_data[%d] = %02x\n",i,write_data[i]);
    }
-
-//   err = ftdi_write_data(ftdi, write_data, bytes_to_read);
    struct ftdi_transfer_control* tc[num_tcs];
    //insert reset fifo flag
    write_data[0] = 0x00;
@@ -331,16 +312,6 @@ int main(int argc, char **argv){
      printf("Xfer %d done\n", i);
    }
 
-   /* Close thread and free pipe pointers */
-//   pthread_join(file_writing_thread,NULL);
-//   pipe_producer_free(pipe_writer);
-//   pipe_consumer_free(pipe_reader);
-   
-   /* Close file */
-//   if (inputFile) {
-//     fclose(inputFile);
-//     inputFile = NULL;
-//   }
    if (verbose) {
      printf("Sample pushing ended.\n");
    }
