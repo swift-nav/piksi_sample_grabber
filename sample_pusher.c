@@ -159,92 +159,6 @@ long int parse_size(char * s)
   }
 }
 
-//static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress, void *userdata)
-//{
-//  /*
-//   * Keep track of number of bytes read - don't record samples until we have 
-//   * read a large number of bytes. This is to flush out the FIFO in the FPGA 
-//   * - it is necessary to do this to ensure we receive continuous samples.
-//   */
-//  static uint64_t total_num_bytes_received = 0;
-//
-//  /* Array for extraction of samples from buffer */
-//  char *pack_buffer = (char *)malloc(length*SAMPLES_PER_BYTE*sizeof(char));
-//  if (length){
-//    if (total_num_bytes_received >= NUM_FLUSH_BYTES){
-//      /* Save data to our pipe */
-//      if (outputFile) {
-//        /*
-//         * Convert samples from buffer from signmag to signed and write to 
-//         * the pipe. They will be read from the pipe and written to disk in a 
-//         * different thread.
-//         * Packing of each byte is
-//         *   [7:5] : Sample (sign, magnitude high, magnitude low)
-//         *   [4:1] : Unused
-//         *   [0] : FPGA FIFO Error flag, active low. Usually indicates bytes
-//         *         are not being read out of FPGA FIFO quickly enough to avoid
-//         *         overflow
-//         */
-//        if ((length % 2) != 0) {
-//          printf("received callback with buffer length not an even number\n");
-//          exitRequested = 1;
-//        } else {
-//          for (uint64_t ci = 0; ci < length/2; ci++){
-//            /* Check byte to see if a FIFO error occured */
-//            if (FPGA_FIFO_ERROR_CHECK(buffer[ci])) {
-//              printf("FPGA FIFO Error Flag at sample number %ld\n",
-//                     (long int)(total_unflushed_bytes+ci));
-//              exitRequested = 1;
-//            }
-//            /* Two samples (bytes) at a time */
-//            pack_buffer[ci] = (buffer[ci*2+0] & 0xE0) | 
-//                              ((buffer[ci*2+1]>>3) & 0x1C) | 
-//                              (buffer[ci*2] & 0x01);
-//          }
-//          /* Push values into the pipe */
-//          pipe_push(pipe_writer,(void *)pack_buffer,length/2);
-//        }
-//      }
-//      total_unflushed_bytes += length;
-//    }
-//    total_num_bytes_received += length;
-//  }
-//
-//  /* bytes_wanted = 0 means program was not run with a size argument */
-//  if (bytes_wanted != 0 && total_unflushed_bytes >= bytes_wanted){
-//    exitRequested = 1;
-//  }
-//
-//  /* Print progress : time elapsed, bytes transferred, transfer rate */
-//  if (verbose) {
-//    if (progress){
-//      printf("%10.02fs total time %9.3f MiB captured %7.1f kB/s curr %7.1f kB/s total\n",
-//              progress->totalTime,
-//              progress->current.totalBytes / (1024.0 * 1024.0),
-//              progress->currentRate / 1024.0,
-//              progress->totalRate / 1024.0);
-//    }
-//  }
-//
-//  return exitRequested ? 1 : 0;
-//}
-
-//static void* file_writer(void* pc_ptr){
-//  pipe_consumer_t* reader = pc_ptr;
-//  char buf[WRITE_SLICE_SIZE];
-//  size_t bytes_read;
-//  while (!(exitRequested)){
-//    bytes_read = pipe_pop(reader,buf,WRITE_SLICE_SIZE);
-//    if (bytes_read > 0){
-//      if (fwrite(buf,bytes_read,1,outputFile) != 1){
-//        perror("Write error\n");
-//        exitRequested = 1;
-//      }
-//    }
-//  }
-//  return NULL;
-//}
-
 int main(int argc, char **argv){
   struct ftdi_context *ftdi;
   int err __attribute__((unused)) = 0;
@@ -351,7 +265,7 @@ int main(int argc, char **argv){
    
    unsigned int chunksize = 4096;
 //   unsigned int chunksize = 256;
-   unsigned int num_tcs = 1000;
+   unsigned int num_tcs = 10000;
    err = ftdi_write_data_set_chunksize(ftdi,chunksize);
 //   if (err != 0) {
 //     printf("ftdi_write_data_set_chunksize returned an error = %d\n", err);
