@@ -260,14 +260,15 @@ int main(int argc, char **argv){
   /* Set up handler for CTRL+C */
   signal(SIGINT, sigintHandler);
 
-   unsigned int chunksize = 4096;
-//   unsigned int chunksize = 256;
-   unsigned int num_tcs = 10000;
-   err = ftdi_write_data_set_chunksize(ftdi,chunksize);
-   if (err != 0) {
-     printf("ftdi_write_data_set_chunksize returned an error = %d\n", err);
-   }
-   unsigned int bytes_to_read = chunksize*num_tcs;
+  /* Set transfer size */
+  err = ftdi_write_data_set_chunksize(ftdi,TRANSFER_SIZE);
+  if (err != 0) {
+    printf("ftdi_write_data_set_chunksize returned an error = %d\n", err);
+    return EXIT_FAILURE;
+  }
+
+   unsigned int num_tcs = 100;
+   unsigned int bytes_to_read = TRANSFER_SIZE*num_tcs;
    unsigned char *write_data = malloc(sizeof(char)*bytes_to_read);
    unsigned int bytes_read = fread(write_data, 1, bytes_to_read, fp);
    if (bytes_read != bytes_to_read) {
@@ -285,7 +286,7 @@ int main(int argc, char **argv){
    struct ftdi_transfer_control* tc[num_tcs];
    //insert reset fifo flag
    write_data[0] = 0x00;
-   tc[0] = ftdi_write_data_submit(ftdi, write_data, chunksize);
+   tc[0] = ftdi_write_data_submit(ftdi, write_data, TRANSFER_SIZE);
    //mask reset fifo flag
    write_data[0] |= 0x01;
    printf("first and last 5 of write data starting at %d = ",0);
@@ -293,17 +294,17 @@ int main(int argc, char **argv){
      printf("%d ",((write_data[k] & 0x1C) >> 2));
    }
    for (int32_t k=-5; k<0; k++){
-     printf("%d ",((write_data[chunksize + k] & 0x1C) >> 2));
+     printf("%d ",((write_data[TRANSFER_SIZE + k] & 0x1C) >> 2));
    }
    printf("\n");
    for (uint32_t i=1; i<num_tcs; i++){
-     tc[i] = ftdi_write_data_submit(ftdi, write_data + i*chunksize, chunksize);
+     tc[i] = ftdi_write_data_submit(ftdi, write_data + i*TRANSFER_SIZE, TRANSFER_SIZE);
      printf("first and last 5 of write data starting at %d = ",i);
      for (uint32_t k=0; k<5; k++){
-       printf("%d ",(((write_data + i*chunksize)[k] & 0x1C) >> 2));
+       printf("%d ",(((write_data + i*TRANSFER_SIZE)[k] & 0x1C) >> 2));
      }
      for (int32_t k=-5; k<0; k++){
-       printf("%d ",(((write_data + i*chunksize)[chunksize + k] & 0x1C) >> 2));
+       printf("%d ",(((write_data + i*TRANSFER_SIZE)[TRANSFER_SIZE + k] & 0x1C) >> 2));
      }
      printf("\n");
    }
