@@ -55,7 +55,7 @@
 /* Number of bytes to initially read out of device without saving to file */
 #define NUM_FLUSH_BYTES 50000
 /* Number of samples in each byte received (regardless of how they're packed)*/
-#define SAMPLES_PER_BYTE 1
+#define SAMPLES_PER_BYTE_READ 1
 /* Number of bytes to read out of FIFO and write to disk at a time */
 #define WRITE_SLICE_SIZE 50 
 /* Maximum number of elements in pipe - 0 means size is unconstrained */
@@ -244,6 +244,25 @@ int main(int argc, char **argv){
    }
    if ((fp = fopen(infile,"r+")) == 0)
      fprintf(stderr,"Can't open sample file %s, Error %s\n", infile, strerror(errno));
+
+  /* Exit if there aren't the requested number of samples in the file */
+  err = fseek(fp, 0, SEEK_END);
+  if (err != 0 ) {
+    fprintf(stderr,"Failed to seek to end of file to find file size\n");
+    exit(0);
+  }
+  long int file_size = ftell(fp);
+  if (file_size < num_samples_to_send/SAMPLES_PER_BYTE_READ) {
+    fprintf(stderr,"Couldn't read enough samples from file\n");
+    exit(0);
+  }
+  /* If size argument isn't specified, transmit the whole file */
+  if (num_samples_to_send == -1) { /* -1 means uninitialized */
+    num_samples_to_send = file_size * SAMPLES_PER_BYTE_READ;
+    fprintf(stdout,"No -s argument specified, using size of file instead : %lu\n", num_samples_to_send);
+  }
+  rewind(fp);
+
    signal(SIGINT, sigintHandler);
 
    
