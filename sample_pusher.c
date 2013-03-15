@@ -15,21 +15,23 @@
  *
  *   "sample_pusher.c"
  *
- *   Purpose : Allows streaming of raw samples from MAX2769 RF Frontend for 
- *             post-processing and analysis. Samples are 3-bit and saved to 
- *             given file one sample per byte as signed integers.
+ *   Purpose : Allows streaming of raw samples from the PC to the FPGA to 
+ *             enable repeated firmware runs with the same sample stream.
  *
  *   Usage :   After running set_fifo_mode to set the FT232H on the Piksi to 
  *             fifo mode, use sample_pusher (see arguments below).
- *             End sample capture with ^C (CTRL+C). After finishing sample
- *             capture, run set_uart_mode to set the FT232H on the Piksi back
- *             to UART mode for normal operation.
+ *             After finishing using sample pusher, use set_uart_mode to set 
+ *             the FT232H on the Piksi back to UART mode for normal operation.
+ *             Note : The STM on the Piksi must use a different UART to 
+ *             transmit debug information to the PC than UART6 whilst using 
+ *             the sample pusher (you will need to use a separate 3.3 volt 
+ *             UART to USB converter with one of the other two picoblade UARTs,
+ *             UART1 or UART3).
  *
  *   Options : ./sample_pusher [-s number] [-v] [-h] [filename]
- *             [--size -s]     Number of samples to collect before exiting.
+ *             [--size -s]     Number of samples to transmit before exiting.
  *                             May be suffixed with a k (1e3) or an M (1e6).
- *                             If no argument is supplied, samples will be
- *                             collected until ^C (CTRL+C) is received.
+ *                             If no argument is supplied, 
  *             [--verbose -v]  Print more verbose output.
  *             [--help -h]     Print usage information and exit.
  *             [filename]      A filename to save samples to. If none is 
@@ -190,6 +192,7 @@ int main(int argc, char **argv){
         abort();
      }
    
+  /* Get name of input file */
   if (optind < argc - 1){
     // Too many extra args
     print_usage();
@@ -273,13 +276,10 @@ int main(int argc, char **argv){
             ftdi_get_error_string(ftdi));
   }
 
-  /* Set up new transfers if we have room for them in the transfer queue.
-     Check if transfers have finished. Exit loop when we have requested
-     the total number of transfers. */
-  unsigned char *bytes_read = malloc(sizeof(unsigned char)*TRANSFER_SIZE/SAMPLES_PER_BYTE_READ);
-  unsigned char* samples[MAX_PENDING_TRANSFERS];
+  unsigned char* bytes_read = malloc(sizeof(unsigned char)*TRANSFER_SIZE/SAMPLES_PER_BYTE_READ);
+  unsigned char* bytes_send[MAX_PENDING_TRANSFERS];
   for (uint64_t i = 0; i<MAX_PENDING_TRANSFERS; i++){
-    samples[i] = malloc(sizeof(unsigned char)*TRANSFER_SIZE);
+    bytes_send[i] = malloc(sizeof(unsigned char)*TRANSFER_SIZE);
   }
   struct ftdi_transfer_control* transfers[MAX_PENDING_TRANSFERS];
   /* For FPGA to cross-check against to make sure it doesn't have dropped
@@ -292,6 +292,9 @@ int main(int argc, char **argv){
   time_t start = time(NULL);
   time_t last_progress = 0;
   time_t curr_progress;
+  /* Set up new transfers if we have room for them in the transfer queue.
+     Check if transfers have finished. Exit loop when we have requested
+     the total number of transfers. */
   while (num_requested_transfers < num_total_transfers) {
     if (exitRequested == 1) break;
     /* If we have not reached the maximum allowed queued transfers,
@@ -308,13 +311,13 @@ int main(int argc, char **argv){
       for (uint64_t k=0; k<TRANSFER_SIZE/SAMPLES_PER_BYTE_READ; k++) {
         /* Extract first sample, deactivate FIFO_RESET_FLAG high, and OR in 
            error counter */
-        samples[transfer_index][k*2+0] = (bytes_read[k] & 0xE0)
+        bytes_send[transfer_index][k*2+0] = (bytes_read[k] & 0xE0)
                                          | ((err_check_counter & 0x07) << 2)
                                          | (0x01 << RESET_FIFO_FLAG_BIT);
         err_check_counter = (err_check_counter + 1) % 7;
         /* Extract second sample, deactivate FIFO_RESET_FLAG high, and OR in 
            error counter */
-        samples[transfer_index][k*2+1] = ((bytes_read[k]<<3) & 0xE0)
+        bytes_send[transfer_index][k*2+1] = ((bytes_read[k]<<3) & 0xE0)
                                          | ((err_check_counter & 0x07) << 2)
                                          | (0x01 << RESET_FIFO_FLAG_BIT);
         err_check_counter = (err_check_counter + 1) % 7;
@@ -322,10 +325,10 @@ int main(int argc, char **argv){
       /* Set the RESET_FIFO_FLAG low (active low) for the first sample
          of the first transfer. */
       if (num_requested_transfers == 0) {
-        samples[0][0] &= (~(0x01 << RESET_FIFO_FLAG_BIT));
+        bytes_send[0][0] &= (~(0x01 << RESET_FIFO_FLAG_BIT));
       }
       /* Submit the transfer request */
-      transfers[transfer_index] = ftdi_write_data_submit(ftdi, samples[transfer_index], TRANSFER_SIZE);
+      transfers[transfer_index] = ftdi_write_data_submit(ftdi, bytes_send[transfer_index], TRANSFER_SIZE);
       num_requested_transfers += 1;
     }
     /* Check if a transfer has completed. First check if we've submitted at
@@ -369,7 +372,7 @@ int main(int argc, char **argv){
   //why does this cause memory corruption?
   //free(bytes_read);
   //for (uint64_t i = 0; i<MAX_PENDING_TRANSFERS; i++){
-  //  free(samples[i]);
+  //  free(bytes_send[i]);
   //}
 
   /* Close file */
