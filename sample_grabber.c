@@ -25,12 +25,11 @@
  *             capture, run set_uart_mode to set the FT232H on the Piksi back
  *             to UART mode for normal operation.
  *
- *   Options : ./sample_grabber [-s number] [-v] [-h] [filename]
+ *   Options : ./sample_grabber [-s number] [-h] [filename]
  *             [--size -s]     Number of samples to collect before exiting.
  *                             May be suffixed with a k (1e3) or an M (1e6).
  *                             If no argument is supplied, samples will be
  *                             collected until ^C (CTRL+C) is received.
- *             [--verbose -v]  Print more verbose output.
  *             [--help -h]     Print usage information and exit.
  *             [filename]      A filename to save samples to. If none is 
  *                             supplied then samples will not be saved.
@@ -77,8 +76,6 @@ static pthread_t file_writing_thread;
 static pipe_producer_t* pipe_writer;
 static pipe_consumer_t* pipe_reader;
 
-static int verbose = 0;
-
 static void sigintHandler(int signum)
 {
   exitRequested = 1;
@@ -87,13 +84,12 @@ static void sigintHandler(int signum)
 static void print_usage(void)
 {
   printf(
-  "Usage: ./sample_grabber [-s num] [-v] [-h] [filename]\n"
+  "Usage: ./sample_grabber [-s num] [-h] [filename]\n"
   "Options:\n"
   "  [--size -s]     Number of samples to collect before exiting. Number may\n"
   "                  be suffixed with a k (1e3) or an M (1e6). If no argument\n"
   "                  is supplied, samples will be collected until ^C (CTRL+C)\n"
   "                  is received.\n"
-  "  [--verbose -v]  Print more verbose output.\n"
   "  [--help -h]     Print usage information and exit.\n"
   "  [filename]      A filename to save samples to. If none is supplied then\n"
   "                  samples will not be saved.\n"
@@ -212,14 +208,12 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
   }
 
   /* Print progress : time elapsed, bytes transferred, transfer rate */
-  if (verbose) {
-    if (progress){
-      printf("%10.02fs total time %9.3f MiB captured %7.1f kB/s curr %7.1f kB/s total\n",
-              progress->totalTime,
-              progress->current.totalBytes / (1024.0 * 1024.0),
-              progress->currentRate / 1024.0,
-              progress->totalRate / 1024.0);
-    }
+  if (progress){
+    printf("%10.02fs total time %9.3f MiB captured %7.1f kB/s curr %7.1f kB/s total\n",
+            progress->totalTime,
+            progress->current.totalBytes / (1024.0 * 1024.0),
+            progress->currentRate / 1024.0,
+            progress->totalRate / 1024.0);
   }
 
   return exitRequested ? 1 : 0;
@@ -252,7 +246,6 @@ int main(int argc, char **argv){
 
   static const struct option long_opts[] = {
     {"size",       required_argument, NULL, 's'},
-    {"verbose",    no_argument,       NULL, 'v'},
     {"help",       no_argument,       NULL, 'h'},
     {NULL,         no_argument,       NULL, 0}
   };
@@ -260,11 +253,8 @@ int main(int argc, char **argv){
   opterr = 0;
   int c;
   int option_index = 0;
-  while ((c = getopt_long(argc, argv, "s:vh", long_opts, &option_index)) != -1)
+  while ((c = getopt_long(argc, argv, "s:h", long_opts, &option_index)) != -1)
     switch (c) {
-      case 'v':
-        verbose++;
-        break;
       case 's': {
         long int samples_wanted = parse_size(optarg);
         if (samples_wanted <= 0) {
@@ -298,9 +288,7 @@ int main(int argc, char **argv){
      // Exactly one extra argument- a dump file
      outfile = argv[optind];
    } else {
-     if (verbose) {
-       printf("No file name given, will not save samples to file\n");
-     }
+     printf("No file name given, will not save samples to file\n");
    }
    
    if ((ftdi = ftdi_new()) == 0){
@@ -370,9 +358,7 @@ int main(int argc, char **argv){
      fclose(outputFile);
      outputFile = NULL;
    }
-   if (verbose) {
-     printf("Capture ended.\n");
-   }
+   printf("Capture ended.\n");
    
    /* Clean up */
    if (ftdi_set_bitmode(ftdi, 0xff, BITMODE_RESET) < 0){

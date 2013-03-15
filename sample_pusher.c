@@ -28,11 +28,10 @@
  *             UART to USB converter with one of the other two picoblade UARTs,
  *             UART1 or UART3).
  *
- *   Options : ./sample_pusher [-s number] [-v] [-h] [filename]
+ *   Options : ./sample_pusher [-s number] [-h] [filename]
  *             [--size -s]     Number of samples to transmit before exiting.
  *                             May be suffixed with a k (1e3) or an M (1e6).
  *                             If no argument is supplied, 
- *             [--verbose -v]  Print more verbose output.
  *             [--help -h]     Print usage information and exit.
  *             [filename]      A filename to save samples to. If none is 
  *                             supplied then samples will not be saved.
@@ -66,8 +65,6 @@
 
 static int exitRequested = 0;
 
-static int verbose = 0;
-
 static void sigintHandler(int signum)
 {
   exitRequested = 1;
@@ -76,9 +73,8 @@ static void sigintHandler(int signum)
 static void print_usage(void)
 {
   fprintf(stdout,
-  "Usage: ./sample_pusher [-v] [-h] [filename]\n"
+  "Usage: ./sample_pusher [-h] [filename]\n"
   "Options:\n"
-  "  [--verbose -v]  Print more verbose output.\n"
   "  [--help -h]     Print usage information and exit.\n"
   "  [filename]      A filename to get samples from. Must be supplied. Bytes\n"
   "                  in file are assumed to be in Piksi format, ie bits =\n"
@@ -153,7 +149,6 @@ int main(int argc, char **argv){
 
   static const struct option long_opts[] = {
     {"size",       required_argument, NULL, 's'},
-    {"verbose",    no_argument,       NULL, 'v'},
     {"help",       no_argument,       NULL, 'h'},
     {NULL,         no_argument,       NULL, 0}
   };
@@ -162,11 +157,8 @@ int main(int argc, char **argv){
   int c;
   int option_index = 0;
   long int num_samples_to_send = -1;
-  while ((c = getopt_long(argc, argv, "vhs:", long_opts, &option_index)) != -1)
+  while ((c = getopt_long(argc, argv, "hs:", long_opts, &option_index)) != -1)
     switch (c) {
-      case 'v':
-        verbose++;
-        break;
       case 's': {
         num_samples_to_send = parse_size(optarg);
         if (num_samples_to_send <= 0) {
@@ -364,9 +356,7 @@ int main(int argc, char **argv){
   /* Sample pushing ended, final progress print */
   curr_progress = time(NULL);
   fprintf(stdout,"Elapsed seconds = %ld : %lu transfers finished - %lu samples\n",curr_progress-start,(long unsigned int)num_finished_transfers,(long unsigned int)num_finished_transfers*TRANSFER_SIZE);
-//  if (verbose) {
   fprintf(stdout,"Sample pushing ended.\n");
-//  }
 
   /* Free memory used to read data from file and store samples */
   //why does this cause memory corruption?
