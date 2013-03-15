@@ -48,17 +48,19 @@
 #include <signal.h>
 #include <errno.h>
 #include <pthread.h>
+#include <time.h>
 
 #include "ftdi.h"
-#include "pipe/pipe.h"
-
 
 /* Number of bytes to transfer to device per transfer */
 #define TRANSFER_SIZE 4096
-/* Number of samples in each byte read from file */
-#define SAMPLES_PER_BYTE_READ 1
+//#define TRANSFER_SIZE 512
+/* Maximum number of transfers to the device to be pending at one time */
+#define MAX_PENDING_TRANSFERS 1000
 
-static FILE *inputFile = NULL;
+#define SAMPLES_PER_BYTE_READ 2
+/* Active low flag directing the FPGA to reset the FIFO */
+#define RESET_FIFO_FLAG_BIT 0
 
 static int exitRequested = 0;
 
@@ -72,13 +74,8 @@ static void sigintHandler(int signum)
 static void print_usage(void)
 {
   printf(
-  "Usage: ./sample_pusher [-s num] [-v] [-h] [filename]\n"
+  "Usage: ./sample_pusher [-v] [-h] [filename]\n"
   "Options:\n"
-  "  [--size -s]     Number of samples to write before exiting. Number may\n"
-  "                  be suffixed with a k (1e3) or an M (1e6). If no argument\n"
-  "                  is supplied, samples will be written to device until ^C\n"
-  "                  (CTRL+C) is received or the end of the file is reached.\n"
-  "                  \n"
   "  [--verbose -v]  Print more verbose output.\n"
   "  [--help -h]     Print usage information and exit.\n"
   "  [filename]      A filename to get samples from. Must be supplied. Bytes\n"
@@ -146,10 +143,9 @@ long int parse_size(char * s)
 
 int main(int argc, char **argv){
   struct ftdi_context *ftdi;
-  int err __attribute__((unused)) = 0;
+  int err = 0;
   FILE *fp = NULL;
   char const *infile  = 0;
-  inputFile =0;
   exitRequested = 0;
   char *descstring = NULL;
 
@@ -194,50 +190,50 @@ int main(int argc, char **argv){
         abort();
      }
    
-   if (optind < argc - 1){
-     // Too many extra args
-     print_usage();
-   } else if (optind == argc - 1){
-     // Exactly one extra argument- a dump file
-     infile = argv[optind];
-   } else {
-     if (verbose) {
-       fprintf(stderr, "No file name given, will not save samples to file\n");
-       return EXIT_FAILURE;
-     }
-   }
+  if (optind < argc - 1){
+    // Too many extra args
+    print_usage();
+  } else if (optind == argc - 1){
+    // Exactly one extra argument- a dump file
+    infile = argv[optind];
+  } else {
+    fprintf(stderr, "Exiting because no file was specified\n");
+    return EXIT_FAILURE;
+  }
    
-   if ((ftdi = ftdi_new()) == 0){
-     fprintf(stderr, "ftdi_new failed\n");
-     return EXIT_FAILURE;
-   }
+  if ((ftdi = ftdi_new()) == 0){
+    fprintf(stderr, "ftdi_new failed\n");
+    return EXIT_FAILURE;
+  }
    
-   if (ftdi_set_interface(ftdi, INTERFACE_A) < 0){
-     fprintf(stderr, "ftdi_set_interface failed\n");
-     ftdi_free(ftdi);
-     return EXIT_FAILURE;
-   }
+  if (ftdi_set_interface(ftdi, INTERFACE_A) < 0){
+    fprintf(stderr, "ftdi_set_interface failed\n");
+    ftdi_free(ftdi);
+    return EXIT_FAILURE;
+  }
    
-   if (ftdi_usb_open_desc(ftdi, 0x0403, 0x8398, descstring, NULL) < 0){
-     fprintf(stderr,"Can't open ftdi device: %s\n",ftdi_get_error_string(ftdi));
-     ftdi_free(ftdi);
-     return EXIT_FAILURE;
-   }
+  if (ftdi_usb_open_desc(ftdi, 0x0403, 0x8398, descstring, NULL) < 0){
+    fprintf(stderr,"Can't open ftdi device: %s\n",ftdi_get_error_string(ftdi));
+    ftdi_free(ftdi);
+    return EXIT_FAILURE;
+  }
    
-   /* A timeout value of 1 results in may skipped blocks */
-   if(ftdi_set_latency_timer(ftdi, 2)){
-     fprintf(stderr,"Can't set latency, Error %s\n",ftdi_get_error_string(ftdi));
-     ftdi_usb_close(ftdi);
-     ftdi_free(ftdi);
-     return EXIT_FAILURE;
-   }
+  /* A timeout value of 1 results in may skipped blocks */
+  if(ftdi_set_latency_timer(ftdi, 2)){
+    fprintf(stderr,"Can't set latency, Error %s\n",ftdi_get_error_string(ftdi));
+    ftdi_usb_close(ftdi);
+    ftdi_free(ftdi);
+    return EXIT_FAILURE;
+  }
    
-   if (ftdi_usb_purge_tx_buffer(ftdi) < 0){
-     fprintf(stderr,"Can't rx purge %s\n",ftdi_get_error_string(ftdi));
-     return EXIT_FAILURE;
-   }
-   if ((fp = fopen(infile,"r+")) == 0)
-     fprintf(stderr,"Can't open sample file %s, Error %s\n", infile, strerror(errno));
+  if (ftdi_usb_purge_tx_buffer(ftdi) < 0){
+    fprintf(stderr,"Can't rx purge %s\n",ftdi_get_error_string(ftdi));
+    return EXIT_FAILURE;
+  }
+  if ((fp = fopen(infile,"r+")) == 0){
+    fprintf(stderr,"Can't open sample file %s, Error %s\n", infile, strerror(errno));
+    return EXIT_FAILURE;
+  }
 
   /* Exit if there aren't the requested number of samples in the file */
   err = fseek(fp, 0, SEEK_END);
@@ -271,61 +267,125 @@ int main(int argc, char **argv){
     return EXIT_FAILURE;
   }
 
-   unsigned int bytes_to_read = TRANSFER_SIZE*num_total_transfers;
-   unsigned char *write_data = malloc(sizeof(char)*bytes_to_read);
-   unsigned int bytes_read = fread(write_data, 1, bytes_to_read, fp);
-   if (bytes_read != bytes_to_read) {
-     printf("Couldn't read %d bytes from file\n",bytes_to_read);
-     exit(1);
-   } else {
-     printf("Read %d bytes from file\n",bytes_read);
-   }
-   for (uint32_t i=0; i<bytes_read; i++){
-     //mask reset fifo flag
-     write_data[i] &= 0x00; //have data count from 0 to 6 then wrap
-     write_data[i] |= (i % 7) << 2; //have data count from 0 to 6 then wrap
-     write_data[i] |= 0x01;
-   }
-   struct ftdi_transfer_control* tc[num_total_transfers];
-   //insert reset fifo flag
-   write_data[0] = 0x00;
-   tc[0] = ftdi_write_data_submit(ftdi, write_data, TRANSFER_SIZE);
-   //mask reset fifo flag
-   write_data[0] |= 0x01;
-   for (uint32_t i=1; i<num_total_transfers; i++){
-     tc[i] = ftdi_write_data_submit(ftdi, write_data + i*TRANSFER_SIZE, TRANSFER_SIZE);
+  /* Set chip in synchronous FIFO mode */
+  if (ftdi_set_bitmode(ftdi, 0xff, BITMODE_SYNCFF) < 0){
+    fprintf(stderr,"Can't set synchronous fifo mode: %s\n",
+            ftdi_get_error_string(ftdi));
+  }
+
+  /* Set up new transfers if we have room for them in the transfer queue.
+     Check if transfers have finished. Exit loop when we have requested
+     the total number of transfers. */
+  unsigned char *bytes_read = malloc(sizeof(unsigned char)*TRANSFER_SIZE/SAMPLES_PER_BYTE_READ);
+  unsigned char* samples[MAX_PENDING_TRANSFERS];
+  for (uint64_t i = 0; i<MAX_PENDING_TRANSFERS; i++){
+    samples[i] = malloc(sizeof(unsigned char)*TRANSFER_SIZE);
+  }
+  struct ftdi_transfer_control* transfers[MAX_PENDING_TRANSFERS];
+  /* For FPGA to cross-check against to make sure it doesn't have dropped
+     or inserted samples, counts from 0 to 6 and then rolls over */
+  uint8_t err_check_counter = 0;
+  uint64_t num_requested_transfers = 0;
+  uint64_t num_finished_transfers = 0;
+  uint64_t transfer_index = 0;
+  uint64_t check_index = 0;
+  time_t start = time(NULL);
+  time_t last_progress = 0;
+  time_t curr_progress;
+  while (num_requested_transfers < num_total_transfers) {
+    if (exitRequested == 1) break;
+    /* If we have not reached the maximum allowed queued transfers,
+       start a new one */
+    if (num_requested_transfers - num_finished_transfers < MAX_PENDING_TRANSFERS) {
+      /* Read data from file */
+      if (fread(bytes_read,1,TRANSFER_SIZE,fp) != TRANSFER_SIZE){
+        fprintf(stderr,"Failed to read %d bytes from file\n",TRANSFER_SIZE);
+        return EXIT_FAILURE;
+      }
+      /* Extract samples (Piksi format) from read bytes, OR in 
+         err_check_counter, deactivate RESET_FIFO_FLAG bit */
+      transfer_index = num_requested_transfers % MAX_PENDING_TRANSFERS;
+      for (uint64_t k=0; k<TRANSFER_SIZE/SAMPLES_PER_BYTE_READ; k++) {
+        /* Extract first sample, deactivate FIFO_RESET_FLAG high, and OR in 
+           error counter */
+        samples[transfer_index][k*2+0] = (bytes_read[k] & 0xE0)
+                                         | ((err_check_counter & 0x07) << 2)
+                                         | (0x01 << RESET_FIFO_FLAG_BIT);
+        err_check_counter = (err_check_counter + 1) % 7;
+        /* Extract second sample, deactivate FIFO_RESET_FLAG high, and OR in 
+           error counter */
+        samples[transfer_index][k*2+1] = ((bytes_read[k]<<3) & 0xE0)
+                                         | ((err_check_counter & 0x07) << 2)
+                                         | (0x01 << RESET_FIFO_FLAG_BIT);
+        err_check_counter = (err_check_counter + 1) % 7;
+      }
+      /* Set the RESET_FIFO_FLAG low (active low) for the first sample
+         of the first transfer. */
+      if (num_requested_transfers == 0) {
+        samples[0][0] &= (~(0x01 << RESET_FIFO_FLAG_BIT));
+      }
+      /* Submit the transfer request */
+      transfers[transfer_index] = ftdi_write_data_submit(ftdi, samples[transfer_index], TRANSFER_SIZE);
+      num_requested_transfers += 1;
     }
-   if (ftdi_set_bitmode(ftdi,  0xff, BITMODE_SYNCFF) < 0){
-     fprintf(stderr,"Can't set synchronous fifo mode: %s\n",
-             ftdi_get_error_string(ftdi));
-   }
+    /* Check if a transfer has completed. First check if we've submitted at
+       least MAX_PENDING_TRANSFERS transfer requests */
+    if (num_requested_transfers >= MAX_PENDING_TRANSFERS){
+      if (ftdi_transfer_data_done(transfers[check_index]) > 0){
+        check_index = (num_finished_transfers+1) % MAX_PENDING_TRANSFERS;
+        num_finished_transfers += 1;
+      }
+    }
+    /* Print progress */
+    curr_progress = time(NULL);
+    if (curr_progress-last_progress > 0) {
+      last_progress = curr_progress;
+      fprintf(stdout,"Elapsed seconds = %ld : %lu transfers finished - %lu samples\n",curr_progress-start,(long unsigned int)num_finished_transfers,(long unsigned int)num_finished_transfers*TRANSFER_SIZE);
+    }
+  }
 
-   printf("waiting for xfers to finish\n");
-   for (uint32_t i = 0; i<num_total_transfers; i++){
-     int rc = 0;
-     while((rc = ftdi_transfer_data_done(tc[i])) <= 0){
-//       printf("in while loop\n");
-//        if (exitRequested) break;
-//       if (rc < 0)
-//         printf("rc[%d] = %d\n", i, rc);
-     }
-//     printf("Xfer %d done\n", i);
-   }
-   printf("Finished transfers\n");
+  /* Wait for the remaining transfers to finish */
+  while (num_finished_transfers < num_requested_transfers) {
+    if (exitRequested == 1) break;
+    if (ftdi_transfer_data_done(transfers[check_index]) > 0){
+      check_index = (num_finished_transfers+1) % MAX_PENDING_TRANSFERS;
+      num_finished_transfers += 1;
+    }
+    curr_progress = time(NULL);
+    if (curr_progress-last_progress > 0) {
+      last_progress = curr_progress;
+      fprintf(stdout,"Elapsed seconds = %ld : %lu transfers finished - %lu samples\n",curr_progress-start,(long unsigned int)num_finished_transfers,(long unsigned int)num_finished_transfers*TRANSFER_SIZE);
+    }
+  }
 
-   if (verbose) {
-     printf("Sample pushing ended.\n");
-   }
-   
-   /* Clean up */
-   if (ftdi_set_bitmode(ftdi, 0xff, BITMODE_RESET) < 0){
-     fprintf(stderr,"Can't set synchronous fifo mode, Error %s\n",ftdi_get_error_string(ftdi));
-     ftdi_usb_close(ftdi);
-     ftdi_free(ftdi);
-     return EXIT_FAILURE;
-   }
-   ftdi_usb_close(ftdi);
-   ftdi_free(ftdi);
-   signal(SIGINT, SIG_DFL);
-   exit (0);
+  /* Sample pushing ended, final progress print */
+  curr_progress = time(NULL);
+  fprintf(stdout,"Elapsed seconds = %ld : %lu transfers finished - %lu samples\n",curr_progress-start,(long unsigned int)num_finished_transfers,(long unsigned int)num_finished_transfers*TRANSFER_SIZE);
+//  if (verbose) {
+  fprintf(stdout,"Sample pushing ended.\n");
+//  }
+
+  /* Free memory used to read data from file and store samples */
+  //why does this cause memory corruption?
+  //free(bytes_read);
+  //for (uint64_t i = 0; i<MAX_PENDING_TRANSFERS; i++){
+  //  free(samples[i]);
+  //}
+
+  /* Close file */
+  //why does this cause memory corruption?
+  //fclose(fp);
+  //fp = NULL;
+  
+  /* Clean up */
+  if (ftdi_set_bitmode(ftdi, 0xff, BITMODE_RESET) < 0){
+    fprintf(stderr,"Can't set synchronous fifo mode, Error %s\n",ftdi_get_error_string(ftdi));
+    ftdi_usb_close(ftdi);
+    ftdi_free(ftdi);
+    return EXIT_FAILURE;
+  }
+  ftdi_usb_close(ftdi);
+  ftdi_free(ftdi);
+  signal(SIGINT, SIG_DFL);
+  exit (0);
 }
