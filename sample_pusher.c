@@ -75,7 +75,7 @@ static void sigintHandler(int signum)
 
 static void print_usage(void)
 {
-  printf(
+  fprintf(stdout,
   "Usage: ./sample_pusher [-v] [-h] [filename]\n"
   "Options:\n"
   "  [--verbose -v]  Print more verbose output.\n"
@@ -266,7 +266,7 @@ int main(int argc, char **argv){
   /* Set transfer size */
   err = ftdi_write_data_set_chunksize(ftdi,TRANSFER_SIZE);
   if (err != 0) {
-    printf("ftdi_write_data_set_chunksize returned an error = %d\n", err);
+    fprintf(stderr,"ftdi_write_data_set_chunksize returned an error = %d\n", err);
     return EXIT_FAILURE;
   }
 
