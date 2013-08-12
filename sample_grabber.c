@@ -189,7 +189,7 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
         if ((length % 2) != 0) {
           printf("received callback with buffer length not an even number\n");
           exitRequested = 1;
-        } else {
+        } else if (exitRequested != 1) {
           /* Check byte to see if a FIFO error occured */
           for (uint64_t ci = 0; ci < length; ci++){
             if (FPGA_FIFO_ERROR_CHECK(buffer[ci])) {
@@ -252,8 +252,8 @@ int main(int argc, char **argv){
   struct ftdi_context *ftdi;
   int err;
   FILE *of = NULL;
-  char const *outfile  = 0;
-  outputFile =0;
+  char const *outfile = 0;
+  outputFile = 0;
   exitRequested = 0;
   char *descstring = NULL;
 
