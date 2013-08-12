@@ -30,13 +30,13 @@
  *             to UART mode for normal operation.
  *
  *   Options : ./sample_grabber [-s number] [-h] [filename]
- *             [--size -s]     Number of samples to collect before exiting.
- *                             May be suffixed with a k (1e3) or an M (1e6).
- *                             If no argument is supplied, samples will be
- *                             collected until ^C (CTRL+C) is received.
- *             [--help -h]     Print usage information and exit.
- *             [filename]      A filename to save samples to. If none is
- *                             supplied then samples will not be saved.
+ *             [--size -s]  Number of samples to collect before exiting.
+ *                          Valid suffixes are k (1e3), M (1e6), or G (1e9).
+ *                          If no argument is supplied, samples will be
+ *                          collected until ^C (CTRL+C) is received.
+ *             [--help -h]  Print usage information and exit.
+ *             [filename]   A filename to save samples to. If none is
+ *                          supplied then samples will not be saved.
  *
  */
 
@@ -87,17 +87,16 @@ static void print_usage(void)
   printf(
   "Usage: ./sample_grabber [-s num] [-h] [filename]\n"
   "Options:\n"
-  "  [--size -s]     Number of samples to collect before exiting. Number may\n"
-  "                  be suffixed with a k (1e3) or an M (1e6). If no argument\n"
-  "                  is supplied, samples will be collected until ^C (CTRL+C)\n"
-  "                  is received.\n"
-  "  [--help -h]     Print usage information and exit.\n"
-  "  [filename]      A filename to save samples to. If none is supplied then\n"
-  "                  samples will not be saved.\n"
-  "Note : set_fifo_mode must be run before sample_grabber to configure the USB\n"
-  "       hardware on the device for FIFO mode. Run set_uart_mode after\n"
-  "       sample_grabber to set the device back to UART mode for normal\n"
-  "       operation.\n"
+  "   [--size -s]  Number of samples to collect before exiting.\n"
+  "               Valid suffixes are k (1e3), M (1e6), or G (1e9).\n"
+  "               If no argument is supplied, samples will be\n"
+  "               collected until ^C (CTRL+C) is received.\n"
+  "  [--help -h]  Print usage information and exit.\n"
+  "  [filename]   A filename to save samples to. If none is\n"
+  "               supplied then samples will not be saved.\n"
+  "Note : set_fifo_mode must be run before sample_grabber to configure the FT232H\n"
+  "       on the device for FIFO mode. Run set_uart_mode after sample_grabber\n"
+  "       to set the FT232H back to UART mode for normal operation.\n"
   );
   exit(1);
 }
