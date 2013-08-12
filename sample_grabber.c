@@ -19,11 +19,11 @@
  *
  *   "sample_grabber.c"
  *
- *   Purpose : Allows streaming of raw samples from MAX2769 RF Frontend for 
- *             post-processing and analysis. Samples are 3-bit and saved to 
+ *   Purpose : Allows streaming of raw samples from MAX2769 RF Frontend for
+ *             post-processing and analysis. Samples are 3-bit and saved to
  *             given file one sample per byte as signed integers.
  *
- *   Usage :   After running set_fifo_mode to set the FT232H on the Piksi to 
+ *   Usage :   After running set_fifo_mode to set the FT232H on the Piksi to
  *             fifo mode, use sample_grabber (see arguments below).
  *             End sample capture with ^C (CTRL+C). After finishing sample
  *             capture, run set_uart_mode to set the FT232H on the Piksi back
@@ -35,7 +35,7 @@
  *                             If no argument is supplied, samples will be
  *                             collected until ^C (CTRL+C) is received.
  *             [--help -h]     Print usage information and exit.
- *             [filename]      A filename to save samples to. If none is 
+ *             [filename]      A filename to save samples to. If none is
  *                             supplied then samples will not be saved.
  *
  */
@@ -57,7 +57,7 @@
 /* Number of samples in each byte received (regardless of how they're packed)*/
 #define SAMPLES_PER_BYTE 1
 /* Number of bytes to read out of pipe and write to disk at a time */
-#define WRITE_SLICE_SIZE 50 
+#define WRITE_SLICE_SIZE 50
 /* Maximum number of elements in pipe - 0 means size is unconstrained */
 #define PIPE_SIZE 0
 
@@ -155,8 +155,8 @@ long int parse_size(char * s)
 static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress, void *userdata)
 {
   /*
-   * Keep track of number of bytes read - don't record samples until we have 
-   * read a large number of bytes. This is to flush out the FIFO in the FPGA 
+   * Keep track of number of bytes read - don't record samples until we have
+   * read a large number of bytes. This is to flush out the FIFO in the FPGA
    * - it is necessary to do this to ensure we receive continuous samples.
    */
   static uint64_t total_num_bytes_received = 0;
@@ -168,8 +168,8 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
       /* Save data to our pipe */
       if (outputFile) {
         /*
-         * Convert samples from buffer from signmag to signed and write to 
-         * the pipe. They will be read from the pipe and written to disk in a 
+         * Convert samples from buffer from signmag to signed and write to
+         * the pipe. They will be read from the pipe and written to disk in a
          * different thread.
          * Packing of each byte is
          *   [7:5] : Sample (sign, magnitude high, magnitude low)
@@ -190,8 +190,8 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
               exitRequested = 1;
             }
             /* Two samples (bytes) at a time */
-            pack_buffer[ci] = (buffer[ci*2+0] & 0xE0) | 
-                              ((buffer[ci*2+1]>>3) & 0x1C) | 
+            pack_buffer[ci] = (buffer[ci*2+0] & 0xE0) |
+                              ((buffer[ci*2+1]>>3) & 0x1C) |
                               (buffer[ci*2] & 0x01);
           }
           /* Push values into the pipe */
@@ -281,7 +281,7 @@ int main(int argc, char **argv){
       default:
         abort();
      }
-   
+
    if (optind < argc - 1){
      // Too many extra args
      print_usage();
@@ -291,24 +291,24 @@ int main(int argc, char **argv){
    } else {
      printf("No file name given, will not save samples to file\n");
    }
-   
+
    if ((ftdi = ftdi_new()) == 0){
      fprintf(stderr, "ftdi_new failed\n");
      return EXIT_FAILURE;
    }
-   
+
    if (ftdi_set_interface(ftdi, INTERFACE_A) < 0){
      fprintf(stderr, "ftdi_set_interface failed\n");
      ftdi_free(ftdi);
      return EXIT_FAILURE;
    }
-   
+
    if (ftdi_usb_open_desc(ftdi, 0x0403, 0x8398, descstring, NULL) < 0){
      fprintf(stderr,"Can't open ftdi device: %s\n",ftdi_get_error_string(ftdi));
      ftdi_free(ftdi);
      return EXIT_FAILURE;
    }
-   
+
    /* A timeout value of 1 results in may skipped blocks */
    if(ftdi_set_latency_timer(ftdi, 2)){
      fprintf(stderr,"Can't set latency, Error %s\n",ftdi_get_error_string(ftdi));
@@ -316,7 +316,7 @@ int main(int argc, char **argv){
      ftdi_free(ftdi);
      return EXIT_FAILURE;
    }
-   
+
    if (ftdi_usb_purge_rx_buffer(ftdi) < 0){
      fprintf(stderr,"Can't rx purge %s\n",ftdi_get_error_string(ftdi));
      return EXIT_FAILURE;
@@ -341,7 +341,7 @@ int main(int argc, char **argv){
    if (outputFile) {
      pthread_create(&file_writing_thread, NULL, &file_writer, pipe_reader);
    }
-   
+
    /* Read samples from the Piksi. ftdi_readstream blocks until user hits ^C */
    err = ftdi_readstream(ftdi, readCallback, NULL, 8, 256);
    if (err < 0 && !exitRequested)
@@ -353,14 +353,14 @@ int main(int argc, char **argv){
      pipe_producer_free(pipe_writer);
      pipe_consumer_free(pipe_reader);
    }
-   
+
    /* Close file */
    if (outputFile) {
      fclose(outputFile);
      outputFile = NULL;
    }
    printf("Capture ended.\n");
-   
+
    /* Clean up */
    if (ftdi_set_bitmode(ftdi, 0xff, BITMODE_RESET) < 0){
      fprintf(stderr,"Can't set synchronous fifo mode, Error %s\n",ftdi_get_error_string(ftdi));
