@@ -215,6 +215,9 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
     total_num_bytes_received += length;
   }
 
+  /* Free up pack_buffer's memory so we don't have a memory leak */
+  free(pack_buffer);
+
   /* bytes_wanted = 0 means program was not run with a size argument */
   if (bytes_wanted != 0 && total_unflushed_bytes >= bytes_wanted){
     exitRequested = 1;
