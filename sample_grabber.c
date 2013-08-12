@@ -357,12 +357,12 @@ int main(int argc, char **argv){
      exit(1);
    exitRequested = 1;
 
-   /* Close thread and free pipe pointers */
-   if (outputFile) {
-     pthread_join(file_writing_thread,NULL);
-     pipe_producer_free(pipe_writer);
-     pipe_consumer_free(pipe_reader);
-   }
+   /* Close thread and free pipe pointers - seems to hang here, not sure why */
+//   if (outputFile) {
+//     pthread_join(file_writing_thread,NULL);
+//     pipe_producer_free(pipe_writer);
+//     pipe_consumer_free(pipe_reader);
+//   }
 
    /* Close file */
    if (outputFile) {
