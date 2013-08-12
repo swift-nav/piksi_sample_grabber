@@ -6,6 +6,10 @@
  * Contacts: Fergus Noble <fergus@swift-nav.com>
  *           Colin Beighley <colin@swift-nav.com>
  *
+ * Based on the example "stream_test.c" in libftdi, updated in 2010 by Uwe
+ * Bonnes <bon@elektron.ikp.physik.tu-darmstadt.de> for libftdi and
+ * originally written by Micah Dowty <micah@navi.cx> in 2009.
+ *
  * This source is subject to the license found in the file 'LICENSE' which must
  * be be distributed together with this source. All other rights reserved.
  *
@@ -34,9 +38,6 @@
  *             [filename]      A filename to save samples to. If none is 
  *                             supplied then samples will not be saved.
  *
- *   Based on the example "stream_test.c" in libftdi, updated in 2010 by Uwe 
- *   Bonnes <bon@elektron.ikp.physik.tu-darmstadt.de> for libftdi and 
- *   originally written by Micah Dowty <micah@navi.cx> in 2009.
  */
 
 #include <stdio.h>
