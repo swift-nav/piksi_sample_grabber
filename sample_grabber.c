@@ -65,13 +65,13 @@
 #define FPGA_FIFO_ERROR_CHECK(byte) (!(byte & 0x01))
 
 static uint64_t total_unflushed_bytes = 0;
-static long int bytes_wanted = 0; /* 0 means uninitialized */
+static long long int bytes_wanted = 0; /* 0 means uninitialized */
 
 static FILE *outputFile = NULL;
 
 static int exitRequested = 0;
 
-/* Pipe specific structs and pointers */
+/* Pipe structs and pointers */
 static pipe_t *sample_pipe;
 static pthread_t file_writing_thread;
 static pipe_producer_t* pipe_writer;
@@ -103,18 +103,19 @@ static void print_usage(void)
 }
 
 /** Parse a string representing a number of samples to an integer.  String can
- * be a plain number or can include a unit suffix. This can be one of 'k' or
- * 'M' which multiply by 1e3 and 1e6 respectively.
+ * be a plain number or can include a unit suffix. This can be one of 'k',
+ * 'M', or 'G', which multiply by 1e3, 1e6, and 1e9 respectively.
  *
  * e.g. "5" -> 5
  *      "2k" -> 2000
  *      "3M" -> 3000000
+ *      "4G" -> 4000000000
  *
  * Returns -1 on an error condition.
  */
-long int parse_size(char * s)
+long long int parse_size(char * s)
 {
-  long int val = -1;
+  long long int val = -1;
   char last = s[strlen(s)-1];
 
   /* If the last character is a digit then just return the string as a
@@ -131,7 +132,7 @@ long int parse_size(char * s)
   /* Last char is a unit suffix, find the numeric part of the value. */
   /* Delete the suffix. */
   s[strlen(s)-1] = 0;
-  /* Convert to a long int. */
+  /* Convert to a long long int. */
   val = atol(s);
   if (val == 0)
     return -1;
@@ -145,6 +146,10 @@ long int parse_size(char * s)
 
     case 'M':
       return val*1e6;
+      break;
+
+    case 'G':
+      return val*1e9;
       break;
 
     default:
@@ -188,9 +193,10 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
           /* Check byte to see if a FIFO error occured */
           for (uint64_t ci = 0; ci < length; ci++){
             if (FPGA_FIFO_ERROR_CHECK(buffer[ci])) {
-              printf("FPGA FIFO Error Flag at sample number %ld\n",
-                     (long int)(total_unflushed_bytes+ci));
+              printf("FPGA FIFO Error Flag at sample number %lld\n",
+                     (long long int)(total_unflushed_bytes+ci));
               exitRequested = 1;
+              break;
             }
           }
           /* Pack samples into pack buffer */
@@ -263,7 +269,7 @@ int main(int argc, char **argv){
   while ((c = getopt_long(argc, argv, "s:h", long_opts, &option_index)) != -1)
     switch (c) {
       case 's': {
-        long int samples_wanted = parse_size(optarg);
+        long long int samples_wanted = parse_size(optarg);
         if (samples_wanted <= 0) {
           fprintf(stderr, "Invalid size argument.\n");
           return EXIT_FAILURE;
@@ -289,8 +295,8 @@ int main(int argc, char **argv){
         return EXIT_FAILURE;
      }
 
-   if (optind < argc - 1){
-     // Too many extra args
+   if (optind < argc - 1) {
+     /* Too many extra args */
      print_usage();
    } else if (optind == argc - 1) {
      /* Exactly one extra argument - file to write to */
