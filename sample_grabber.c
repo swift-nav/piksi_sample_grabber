@@ -54,7 +54,7 @@
 
 /* Number of bytes to initially read out of device without saving to file */
 #define NUM_FLUSH_BYTES 50000
-/* Number of samples in each byte received (regardless of how they're packed)*/
+/* Number of samples in each byte received from the device */
 #define SAMPLES_PER_BYTE 1
 /* Number of bytes to read out of pipe and write to disk at a time */
 #define WRITE_SLICE_SIZE 50
@@ -156,46 +156,52 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
 {
   /*
    * Keep track of number of bytes read - don't record samples until we have
-   * read a large number of bytes. This is to flush out the FIFO in the FPGA
-   * - it is necessary to do this to ensure we receive continuous samples.
+   * read a large number of bytes. We do this in order to flush out the FIFO's
+   * in the FT232H and FPGA to ensure that the samples we receive are continuous.
    */
   static uint64_t total_num_bytes_received = 0;
 
-  /* Array for extraction of samples from buffer */
+  /* Array for packing received samples into */
   char *pack_buffer = (char *)malloc(length*SAMPLES_PER_BYTE*sizeof(char));
   if (length){
     if (total_num_bytes_received >= NUM_FLUSH_BYTES){
-      /* Save data to our pipe */
       if (outputFile) {
         /*
-         * Convert samples from buffer from signmag to signed and write to
-         * the pipe. They will be read from the pipe and written to disk in a
-         * different thread.
-         * Packing of each byte is
-         *   [7:5] : Sample (sign, magnitude high, magnitude low)
-         *   [4:1] : Unused
-         *   [0] : FPGA FIFO Error flag, active low. Usually indicates bytes
-         *         are not being read out of FPGA FIFO quickly enough to avoid
-         *         overflow
+         * Pack samples into buffer and write buffer to pipe. Data in pipe is
+         * written to disk in file_writing_thread.
+         * Format of each received byte is :
+         *   [7:4] : (MAX_I1, MAX_I0, MAX_Q1, MAX_Q0)
+         *   [3:1] : Unused
+         *   [0]   : FPGA FIFO Error flag, active low. Usually indicates
+         *           bytes are not being read out of FPGA FIFO quickly enough
+         *           to avoid overflow.
+         * Format of packed samples is :
+         *   [7:4] : Sample 0 (I1, I0, Q1, Q0)
+         *   [3:0] : Sample 1 (I1, I0, Q1, Q0)
+         * Note that sample_grabber doesn't know anything about the MAX2769's
+         * output bit configuration - it just writes the received bits to disk.
          */
         if ((length % 2) != 0) {
           printf("received callback with buffer length not an even number\n");
           exitRequested = 1;
         } else {
-          for (uint64_t ci = 0; ci < length/2; ci++){
-            /* Check byte to see if a FIFO error occured */
+          /* Check byte to see if a FIFO error occured */
+          for (uint64_t ci = 0; ci < length; ci++){
             if (FPGA_FIFO_ERROR_CHECK(buffer[ci])) {
               printf("FPGA FIFO Error Flag at sample number %ld\n",
                      (long int)(total_unflushed_bytes+ci));
               exitRequested = 1;
             }
-            /* Two samples (bytes) at a time */
-            pack_buffer[ci] = (buffer[ci*2+0] & 0xE0) |
-                              ((buffer[ci*2+1]>>3) & 0x1C) |
-                              (buffer[ci*2] & 0x01);
           }
-          /* Push values into the pipe */
-          pipe_push(pipe_writer,(void *)pack_buffer,length/2);
+          /* Pack samples into pack buffer */
+          if (exitRequested != 1) {
+            for (uint64_t ci = 0; ci < length/2; ci++){
+              pack_buffer[ci] = (buffer[ci*2+0] & 0xF0) |
+                                ((buffer[ci*2+1]>>4) & 0x0F);
+            }
+            /* Push values into the pipe */
+            pipe_push(pipe_writer,(void *)pack_buffer,length/2);
+          }
         }
       }
       total_unflushed_bytes += length;
@@ -224,7 +230,7 @@ static void* file_writer(void* pc_ptr){
   pipe_consumer_t* reader = pc_ptr;
   char buf[WRITE_SLICE_SIZE];
   size_t bytes_read;
-  while (!(exitRequested)){
+  while (!exitRequested){
     bytes_read = pipe_pop(reader,buf,WRITE_SLICE_SIZE);
     if (bytes_read > 0){
       if (fwrite(buf,bytes_read,1,outputFile) != 1){
@@ -246,9 +252,9 @@ int main(int argc, char **argv){
   char *descstring = NULL;
 
   static const struct option long_opts[] = {
-    {"size",       required_argument, NULL, 's'},
-    {"help",       no_argument,       NULL, 'h'},
-    {NULL,         no_argument,       NULL, 0}
+    {"size", required_argument, NULL, 's'},
+    {"help", no_argument,       NULL, 'h'},
+    {NULL,   no_argument,       NULL, 0}
   };
 
   opterr = 0;
@@ -280,13 +286,14 @@ int main(int argc, char **argv){
         return EXIT_FAILURE;
       default:
         abort();
+        return EXIT_FAILURE;
      }
 
    if (optind < argc - 1){
      // Too many extra args
      print_usage();
-   } else if (optind == argc - 1){
-     // Exactly one extra argument- a dump file
+   } else if (optind == argc - 1) {
+     /* Exactly one extra argument - file to write to */
      outfile = argv[optind];
    } else {
      printf("No file name given, will not save samples to file\n");
@@ -335,10 +342,6 @@ int main(int argc, char **argv){
      pipe_writer = pipe_producer_new(sample_pipe);
      pipe_reader = pipe_consumer_new(sample_pipe);
      pipe_free(sample_pipe);
-   }
-
-   /* Start thread for writing samples to file */
-   if (outputFile) {
      pthread_create(&file_writing_thread, NULL, &file_writer, pipe_reader);
    }
 
@@ -346,6 +349,7 @@ int main(int argc, char **argv){
    err = ftdi_readstream(ftdi, readCallback, NULL, 8, 256);
    if (err < 0 && !exitRequested)
      exit(1);
+   exitRequested = 1;
 
    /* Close thread and free pipe pointers */
    if (outputFile) {
