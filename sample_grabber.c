@@ -57,7 +57,7 @@
 /* Number of samples in each byte received from the device */
 #define SAMPLES_PER_BYTE 1
 /* Number of bytes to read out of pipe and write to disk at a time */
-#define WRITE_SLICE_SIZE 50
+#define WRITE_SLICE_SIZE 2048
 /* Maximum number of elements in pipe - 0 means size is unconstrained */
 #define PIPE_SIZE 0
 
