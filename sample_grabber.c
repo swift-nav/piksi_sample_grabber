@@ -295,93 +295,93 @@ int main(int argc, char **argv){
       default:
         abort();
         return EXIT_FAILURE;
-     }
+    }
 
-   if (optind < argc - 1) {
-     /* Too many extra args */
-     print_usage();
-   } else if (optind == argc - 1) {
-     /* Exactly one extra argument - file to write to */
-     outfile = argv[optind];
-   } else {
-     printf("No file name given, will not save samples to file\n");
-   }
+  if (optind < argc - 1) {
+    /* Too many extra args */
+    print_usage();
+  } else if (optind == argc - 1) {
+    /* Exactly one extra argument - file to write to */
+    outfile = argv[optind];
+  } else {
+    printf("No file name given, will not save samples to file\n");
+  }
 
-   if ((ftdi = ftdi_new()) == 0){
-     fprintf(stderr, "ftdi_new failed\n");
-     return EXIT_FAILURE;
-   }
+  if ((ftdi = ftdi_new()) == 0){
+    fprintf(stderr, "ftdi_new failed\n");
+    return EXIT_FAILURE;
+  }
 
-   if (ftdi_set_interface(ftdi, INTERFACE_A) < 0){
-     fprintf(stderr, "ftdi_set_interface failed\n");
-     ftdi_free(ftdi);
-     return EXIT_FAILURE;
-   }
+  if (ftdi_set_interface(ftdi, INTERFACE_A) < 0){
+    fprintf(stderr, "ftdi_set_interface failed\n");
+    ftdi_free(ftdi);
+    return EXIT_FAILURE;
+  }
 
-   if (ftdi_usb_open_desc(ftdi, 0x0403, 0x8398, descstring, NULL) < 0){
-     fprintf(stderr,"Can't open ftdi device: %s\n",ftdi_get_error_string(ftdi));
-     ftdi_free(ftdi);
-     return EXIT_FAILURE;
-   }
+  if (ftdi_usb_open_desc(ftdi, 0x0403, 0x8398, descstring, NULL) < 0){
+    fprintf(stderr,"Can't open ftdi device: %s\n",ftdi_get_error_string(ftdi));
+    ftdi_free(ftdi);
+    return EXIT_FAILURE;
+  }
 
-   /* A timeout value of 1 results in may skipped blocks */
-   if(ftdi_set_latency_timer(ftdi, 2)){
-     fprintf(stderr,"Can't set latency, Error %s\n",ftdi_get_error_string(ftdi));
-     ftdi_usb_close(ftdi);
-     ftdi_free(ftdi);
-     return EXIT_FAILURE;
-   }
+  /* A timeout value of 1 results in may skipped blocks */
+  if(ftdi_set_latency_timer(ftdi, 2)){
+    fprintf(stderr,"Can't set latency, Error %s\n",ftdi_get_error_string(ftdi));
+    ftdi_usb_close(ftdi);
+    ftdi_free(ftdi);
+    return EXIT_FAILURE;
+  }
 
-   if (ftdi_usb_purge_rx_buffer(ftdi) < 0){
-     fprintf(stderr,"Can't rx purge %s\n",ftdi_get_error_string(ftdi));
-     return EXIT_FAILURE;
-   }
-   if (outfile)
-     if ((of = fopen(outfile,"w+")) == 0)
-       fprintf(stderr,"Can't open logfile %s, Error %s\n", outfile, strerror(errno));
-   if (of)
-     if (setvbuf(of, NULL, _IOFBF , 1<<16) == 0)
-       outputFile = of;
-   signal(SIGINT, sigintHandler);
+  if (ftdi_usb_purge_rx_buffer(ftdi) < 0){
+    fprintf(stderr,"Can't rx purge %s\n",ftdi_get_error_string(ftdi));
+    return EXIT_FAILURE;
+  }
+  if (outfile)
+    if ((of = fopen(outfile,"w+")) == 0)
+      fprintf(stderr,"Can't open logfile %s, Error %s\n", outfile, strerror(errno));
+  if (of)
+    if (setvbuf(of, NULL, _IOFBF , 1<<16) == 0)
+      outputFile = of;
+  signal(SIGINT, sigintHandler);
 
-   /* Only create pipe if we have a file to write samples to */
-   if (outputFile) {
-     sample_pipe = pipe_new(sizeof(char),PIPE_SIZE);
-     pipe_writer = pipe_producer_new(sample_pipe);
-     pipe_reader = pipe_consumer_new(sample_pipe);
-     pipe_free(sample_pipe);
-     pthread_create(&file_writing_thread, NULL, &file_writer, pipe_reader);
-   }
+  /* Only create pipe if we have a file to write samples to */
+  if (outputFile) {
+    sample_pipe = pipe_new(sizeof(char),PIPE_SIZE);
+    pipe_writer = pipe_producer_new(sample_pipe);
+    pipe_reader = pipe_consumer_new(sample_pipe);
+    pipe_free(sample_pipe);
+    pthread_create(&file_writing_thread, NULL, &file_writer, pipe_reader);
+  }
 
-   /* Read samples from the Piksi. ftdi_readstream blocks until user hits ^C */
-   err = ftdi_readstream(ftdi, readCallback, NULL, 8, 256);
-   if (err < 0 && !exitRequested)
-     exit(1);
-   exitRequested = 1;
+  /* Read samples from the Piksi. ftdi_readstream blocks until user hits ^C */
+  err = ftdi_readstream(ftdi, readCallback, NULL, 8, 256);
+  if (err < 0 && !exitRequested)
+    exit(1);
+  exitRequested = 1;
 
-   /* Close thread and free pipe pointers - seems to hang here, not sure why */
-//   if (outputFile) {
-//     pthread_join(file_writing_thread,NULL);
-//     pipe_producer_free(pipe_writer);
-//     pipe_consumer_free(pipe_reader);
-//   }
+  /* Close thread and free pipe pointers - seems to hang here, not sure why */
+  //if (outputFile) {
+  //  pthread_join(file_writing_thread,NULL);
+  //  pipe_producer_free(pipe_writer);
+  //  pipe_consumer_free(pipe_reader);
+  //}
 
-   /* Close file */
-   if (outputFile) {
-     fclose(outputFile);
-     outputFile = NULL;
-   }
-   printf("Capture ended.\n");
+  /* Close file */
+  if (outputFile) {
+    fclose(outputFile);
+    outputFile = NULL;
+  }
+  printf("Capture ended.\n");
 
-   /* Clean up */
-   if (ftdi_set_bitmode(ftdi, 0xff, BITMODE_RESET) < 0){
-     fprintf(stderr,"Can't set synchronous fifo mode, Error %s\n",ftdi_get_error_string(ftdi));
-     ftdi_usb_close(ftdi);
-     ftdi_free(ftdi);
-     return EXIT_FAILURE;
-   }
-   ftdi_usb_close(ftdi);
-   ftdi_free(ftdi);
-   signal(SIGINT, SIG_DFL);
-   exit (0);
+  /* Clean up */
+  if (ftdi_set_bitmode(ftdi, 0xff, BITMODE_RESET) < 0){
+    fprintf(stderr,"Can't set synchronous fifo mode, Error %s\n",ftdi_get_error_string(ftdi));
+    ftdi_usb_close(ftdi);
+    ftdi_free(ftdi);
+    return EXIT_FAILURE;
+  }
+  ftdi_usb_close(ftdi);
+  ftdi_free(ftdi);
+  signal(SIGINT, SIG_DFL);
+  exit (0);
 }
