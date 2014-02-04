@@ -87,7 +87,7 @@ static void print_usage(void)
   printf(
   "Usage: ./sample_grabber [-s num] [-h] [filename]\n"
   "Options:\n"
-  "   [--size -s]  Number of samples to collect before exiting.\n"
+  "  [--size -s]  Number of samples to collect before exiting.\n"
   "               Valid suffixes are k (1e3), M (1e6), or G (1e9).\n"
   "               If no argument is supplied, samples will be\n"
   "               collected until ^C (CTRL+C) is received.\n"

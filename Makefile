@@ -1,5 +1,6 @@
 CC = gcc
-CFLAGS = -Wall -Werror -lftd2xx -lftdi1 -pthread -std=gnu99 -D_FILE_OFFSET_BITS=64 -Iinclude
+CFLAGS = -Wall -Werror -lftd2xx -lftdi1 -pthread -std=gnu99 \
+         -D_FILE_OFFSET_BITS=64 -Iinclude
 
 all: set_fifo_mode set_uart_mode sample_grabber sample_pusher
 
