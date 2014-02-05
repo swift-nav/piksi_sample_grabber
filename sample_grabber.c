@@ -34,6 +34,9 @@
  *                          Valid suffixes are k (1e3), M (1e6), or G (1e9).
  *                          If no argument is supplied, samples will be
  *                          collected until ^C (CTRL+C) is received.
+ *             [--id -i]    Product ID of Piksi to take samples from.
+ *                            Default is 0x8398.
+ *                            Valid range 0x0001 to 0xFFFF.
  *             [--help -h]  Print usage information and exit.
  *             [filename]   A filename to save samples to. If none is
  *                          supplied then samples will not be saved.
@@ -52,26 +55,34 @@
 #include "ftdi.h"
 #include "pipe/pipe.h"
 
-/* Number of bytes to initially read out of device without saving to file */
+/* TODO: add verbose option back in. */
+
+/* FTDI VID / Piksi custom PID. */
+#define USB_CUSTOM_VID 0x0403
+#define USB_CUSTOM_PID 0x8398
+
+/* Number of bytes to initially read out of device without saving to file. */
 #define NUM_FLUSH_BYTES 50000
-/* Number of samples in each byte received from the device */
+/* Number of samples in each byte received from the device. */
 #define SAMPLES_PER_BYTE 1
-/* Number of bytes to read out of pipe and write to disk at a time */
+/* Number of bytes to read out of pipe and write to disk at a time. */
 #define WRITE_SLICE_SIZE 2048
-/* Maximum number of elements in pipe - 0 means size is unconstrained */
+/* Maximum number of elements in pipe - 0 means size is unconstrained. */
 #define PIPE_SIZE 0
 
-/* FPGA FIFO Error Flag is 0th bit, active low */
+/* FPGA FIFO Error Flag is 0th bit, active low. */
 #define FPGA_FIFO_ERROR_CHECK(byte) (!(byte & 0x01))
 
 static uint64_t total_unflushed_bytes = 0;
-static long long int bytes_wanted = 0; /* 0 means uninitialized */
+static long long int bytes_wanted = 0; /* 0 means uninitialized. */
 
 static FILE *outputFile = NULL;
 
 static int exitRequested = 0;
 
-/* Pipe structs and pointers */
+int pid = USB_CUSTOM_PID;
+
+/* Pipe structs and pointers. */
 static pipe_t *sample_pipe;
 static pthread_t file_writing_thread;
 static pipe_producer_t* pipe_writer;
@@ -85,12 +96,15 @@ static void sigintHandler(int signum)
 static void print_usage(void)
 {
   printf(
-  "Usage: ./sample_grabber [-s num] [-h] [filename]\n"
+  "Usage: ./sample_grabber [-s num] [-i pid] [-h] [filename]\n"
   "Options:\n"
   "  [--size -s]  Number of samples to collect before exiting.\n"
   "               Valid suffixes are k (1e3), M (1e6), or G (1e9).\n"
   "               If no argument is supplied, samples will be\n"
   "               collected until ^C (CTRL+C) is received.\n"
+  "  [--id -i]    Product ID of Piksi to take samples from.\n"
+  "                 Default is 0x8398.\n"
+  "                 Valid range 0x0001 to 0xFFFF.\n"
   "  [--help -h]  Print usage information and exit.\n"
   "  [filename]   A filename to save samples to. If none is\n"
   "               supplied then samples will not be saved.\n"
@@ -99,6 +113,32 @@ static void print_usage(void)
   "       to set the FT232H back to UART mode for normal operation.\n"
   );
   exit(1);
+}
+
+/* Parse command line arg --id, USB Product ID.
+ * Input: PID in hex or decimal format, i.e. '0xFFFF' or '65535'.
+ *
+ * Returns 0x0001 to 0xFFFF as valid ID, or 0 for error.
+ */
+int parse_pid(char *arg) {
+  int pid = 0;
+
+  /* Find out if it is hex or base 10. Hex preceeded by '0x'. */
+  if ((arg[0] == '0') && (arg[1] == 'x')) {
+    /* Hexadecimal. */
+    /* Check if length is <= 6, i.e. '0xFFFF'. */
+    if (strlen(arg) > 6)
+      return 0;
+    pid = (int)strtol(arg+2, NULL, 16);
+  } else {
+    /* Decimal. */
+    /* Check if length is <= 5, i.e. '65535'. */
+    if (strlen(arg) > 5)
+      return 0;
+    pid = atoi(arg);
+  }
+
+  return pid;
 }
 
 /** Parse a string representing a number of samples to an integer.  String can
@@ -165,7 +205,7 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
    */
   static uint64_t total_num_bytes_received = 0;
 
-  /* Array for packing received samples into */
+  /* Array for packing received samples into. */
   char *pack_buffer = (char *)malloc(length*SAMPLES_PER_BYTE*sizeof(char));
   if (length){
     if (total_num_bytes_received >= NUM_FLUSH_BYTES){
@@ -189,7 +229,7 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
           printf("received callback with buffer length not an even number\n");
           exitRequested = 1;
         } else if (exitRequested != 1) {
-          /* Check byte to see if a FIFO error occured */
+          /* Check byte to see if a FIFO error occured. */
           for (uint64_t ci = 0; ci < length; ci++){
             if (FPGA_FIFO_ERROR_CHECK(buffer[ci])) {
               printf("FPGA FIFO Error Flag at sample number %lld\n",
@@ -198,13 +238,13 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
               break;
             }
           }
-          /* Pack samples into pack buffer */
+          /* Pack samples into pack buffer. */
           if (exitRequested != 1) {
             for (uint64_t ci = 0; ci < length/2; ci++){
               pack_buffer[ci] = (buffer[ci*2+0] & 0xF0) |
                                 ((buffer[ci*2+1]>>4) & 0x0F);
             }
-            /* Push values into the pipe */
+            /* Push values into the pipe. */
             pipe_push(pipe_writer,(void *)pack_buffer,length/2);
           }
         }
@@ -214,15 +254,15 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
     total_num_bytes_received += length;
   }
 
-  /* Free up pack_buffer's memory so we don't have a memory leak */
+  /* Free up pack_buffer's memory so we don't have a memory leak. */
   free(pack_buffer);
 
-  /* bytes_wanted = 0 means program was not run with a size argument */
+  /* bytes_wanted = 0 means program was not run with a size argument. */
   if (bytes_wanted != 0 && total_unflushed_bytes >= bytes_wanted){
     exitRequested = 1;
   }
 
-  /* Print progress : time elapsed, bytes transferred, transfer rate */
+  /* Print progress : time elapsed, bytes transferred, transfer rate. */
   if (progress){
     printf("%10.02fs total time %9.3f MiB captured %7.1f kB/s curr %7.1f kB/s total\n",
             progress->totalTime,
@@ -261,6 +301,7 @@ int main(int argc, char **argv){
 
   static const struct option long_opts[] = {
     {"size", required_argument, NULL, 's'},
+    {"id",   required_argument, NULL, 'i'},
     {"help", no_argument,       NULL, 'h'},
     {NULL,   no_argument,       NULL, 0}
   };
@@ -268,7 +309,7 @@ int main(int argc, char **argv){
   opterr = 0;
   int c;
   int option_index = 0;
-  while ((c = getopt_long(argc, argv, "s:h", long_opts, &option_index)) != -1)
+  while ((c = getopt_long(argc, argv, "s:i:h", long_opts, &option_index)) != -1)
     switch (c) {
       case 's': {
         long long int samples_wanted = parse_size(optarg);
@@ -283,11 +324,21 @@ int main(int argc, char **argv){
         }
         break;
       }
+      case 'i': {
+        pid = parse_pid(optarg);
+        if (!pid) {
+          fprintf(stderr, "Invalid ID argument.\n");
+          return EXIT_FAILURE;
+        }
+        break;
+      }
       case 'h':
         print_usage();
         return EXIT_SUCCESS;
       case '?':
-        if (optopt == 's')
+        if (optopt == 'i')
+          fprintf(stderr, "ID argument requires an argument.\n");
+        else if (optopt == 's')
           fprintf(stderr, "Transfer size option requires an argument.\n");
         else
           fprintf(stderr, "Unknown option `-%c'.\n", optopt);
@@ -298,10 +349,10 @@ int main(int argc, char **argv){
     }
 
   if (optind < argc - 1) {
-    /* Too many extra args */
+    /* Too many extra args. */
     print_usage();
   } else if (optind == argc - 1) {
-    /* Exactly one extra argument - file to write to */
+    /* Exactly one extra argument - file to write to. */
     outfile = argv[optind];
   } else {
     printf("No file name given, will not save samples to file\n");
@@ -318,13 +369,13 @@ int main(int argc, char **argv){
     return EXIT_FAILURE;
   }
 
-  if (ftdi_usb_open_desc(ftdi, 0x0403, 0x8398, descstring, NULL) < 0){
+  if (ftdi_usb_open_desc(ftdi, USB_CUSTOM_VID, pid, descstring, NULL) < 0){
     fprintf(stderr,"Can't open ftdi device: %s\n",ftdi_get_error_string(ftdi));
     ftdi_free(ftdi);
     return EXIT_FAILURE;
   }
 
-  /* A timeout value of 1 results in may skipped blocks */
+  /* A timeout value of 1 results in may skipped blocks. */
   if(ftdi_set_latency_timer(ftdi, 2)){
     fprintf(stderr,"Can't set latency, Error %s\n",ftdi_get_error_string(ftdi));
     ftdi_usb_close(ftdi);
@@ -344,7 +395,7 @@ int main(int argc, char **argv){
       outputFile = of;
   signal(SIGINT, sigintHandler);
 
-  /* Only create pipe if we have a file to write samples to */
+  /* Only create pipe if we have a file to write samples to. */
   if (outputFile) {
     sample_pipe = pipe_new(sizeof(char),PIPE_SIZE);
     pipe_writer = pipe_producer_new(sample_pipe);
@@ -353,27 +404,28 @@ int main(int argc, char **argv){
     pthread_create(&file_writing_thread, NULL, &file_writer, pipe_reader);
   }
 
-  /* Read samples from the Piksi. ftdi_readstream blocks until user hits ^C */
+  /* Read samples from the Piksi. ftdi_readstream blocks until user hits ^C. */
   err = ftdi_readstream(ftdi, readCallback, NULL, 8, 256);
   if (err < 0 && !exitRequested)
     exit(1);
   exitRequested = 1;
 
-  /* Close thread and free pipe pointers - seems to hang here, not sure why */
+  /* Close thread and free pipe pointers. */
+  /* Seems to hang here, not sure why. */
   //if (outputFile) {
   //  pthread_join(file_writing_thread,NULL);
   //  pipe_producer_free(pipe_writer);
   //  pipe_consumer_free(pipe_reader);
   //}
 
-  /* Close file */
+  /* Close file. */
   if (outputFile) {
     fclose(outputFile);
     outputFile = NULL;
   }
   printf("Capture ended.\n");
 
-  /* Clean up */
+  /* Clean up. */
   if (ftdi_set_bitmode(ftdi, 0xff, BITMODE_RESET) < 0){
     fprintf(stderr,"Can't set synchronous fifo mode, Error %s\n",ftdi_get_error_string(ftdi));
     ftdi_usb_close(ftdi);
