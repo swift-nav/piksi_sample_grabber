@@ -29,17 +29,18 @@
  *             capture, run set_uart_mode to set the FT232H on the Piksi back
  *             to UART mode for normal operation.
  *
- *   Options : ./sample_grabber [-s number] [-h] [filename]
- *             [--size -s]  Number of samples to collect before exiting.
- *                          Valid suffixes are k (1e3), M (1e6), or G (1e9).
- *                          If no argument is supplied, samples will be
- *                          collected until ^C (CTRL+C) is received.
- *             [--id -i]    Product ID of Piksi to take samples from.
- *                            Default is 0x8398.
- *                            Valid range 0x0001 to 0xFFFF.
- *             [--help -h]  Print usage information and exit.
- *             [filename]   A filename to save samples to. If none is
- *                          supplied then samples will not be saved.
+ *   Options : ./sample_grabber [-v] [-s number] [-h] [filename]
+ *             [--verbose -v]  Print more verbose output.
+ *             [--size -s]     Number of samples to collect before exiting.
+ *                             Valid suffixes are k (1e3), M (1e6), or G (1e9).
+ *                             If no argument is supplied, samples will be
+ *                             collected until ^C (CTRL+C) is received.
+ *             [--id -i]       Product ID of Piksi to take samples from.
+ *                               Default is 0x8398.
+ *                               Valid range 0x0001 to 0xFFFF.
+ *             [--help -h]     Print usage information and exit.
+ *             [filename]      A filename to save samples to. If none is
+ *                             supplied then samples will not be saved.
  *
  */
 
@@ -82,6 +83,8 @@ static int exitRequested = 0;
 
 int pid = USB_CUSTOM_PID;
 
+int verbose = 0;
+
 /* Pipe structs and pointers. */
 static pipe_t *sample_pipe;
 static pthread_t file_writing_thread;
@@ -98,16 +101,17 @@ static void print_usage(void)
   printf(
   "Usage: ./sample_grabber [-s num] [-i pid] [-h] [filename]\n"
   "Options:\n"
-  "  [--size -s]  Number of samples to collect before exiting.\n"
-  "               Valid suffixes are k (1e3), M (1e6), or G (1e9).\n"
-  "               If no argument is supplied, samples will be\n"
-  "               collected until ^C (CTRL+C) is received.\n"
-  "  [--id -i]    Product ID of Piksi to take samples from.\n"
-  "                 Default is 0x8398.\n"
-  "                 Valid range 0x0001 to 0xFFFF.\n"
-  "  [--help -h]  Print usage information and exit.\n"
-  "  [filename]   A filename to save samples to. If none is\n"
-  "               supplied then samples will not be saved.\n"
+  "  [--verbose -v]  Print more verbose output.\n"
+  "  [--size -s]     Number of samples to collect before exiting.\n"
+  "                  Valid suffixes are k (1e3), M (1e6), or G (1e9).\n"
+  "                  If no argument is supplied, samples will be\n"
+  "                  collected until ^C (CTRL+C) is received.\n"
+  "  [--id -i]       Product ID of Piksi to take samples from.\n"
+  "                    Default is 0x8398.\n"
+  "                    Valid range 0x0001 to 0xFFFF.\n"
+  "  [--help -h]     Print usage information and exit.\n"
+  "  [filename]      A filename to save samples to. If none is\n"
+  "                  supplied then samples will not be saved.\n"
   "Note : set_fifo_mode must be run before sample_grabber to configure the FT232H\n"
   "       on the device for FIFO mode. Run set_uart_mode after sample_grabber\n"
   "       to set the FT232H back to UART mode for normal operation.\n"
@@ -226,14 +230,16 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
          * output bit configuration - it just writes the received bits to disk.
          */
         if ((length % 2) != 0) {
-          printf("received callback with buffer length not an even number\n");
+          if (verbose)
+            printf("received callback with buffer length not an even number\n");
           exitRequested = 1;
         } else if (exitRequested != 1) {
           /* Check byte to see if a FIFO error occured. */
           for (uint64_t ci = 0; ci < length; ci++){
             if (FPGA_FIFO_ERROR_CHECK(buffer[ci])) {
-              printf("FPGA FIFO Error Flag at sample number %lld\n",
-                     (long long int)(total_unflushed_bytes+ci));
+              if (verbose)
+                printf("FPGA FIFO Error Flag at sample number %lld\n",
+                       (long long int)(total_unflushed_bytes+ci));
               exitRequested = 1;
               break;
             }
@@ -264,11 +270,12 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
 
   /* Print progress : time elapsed, bytes transferred, transfer rate. */
   if (progress){
-    printf("%10.02fs total time %9.3f MiB captured %7.1f kB/s curr %7.1f kB/s total\n",
-            progress->totalTime,
-            progress->current.totalBytes / (1024.0 * 1024.0),
-            progress->currentRate / 1024.0,
-            progress->totalRate / 1024.0);
+    if (verbose)
+      printf("%10.02fs total time %9.3f MiB captured %7.1f kB/s curr %7.1f kB/s total\n",
+              progress->totalTime,
+              progress->current.totalBytes / (1024.0 * 1024.0),
+              progress->currentRate / 1024.0,
+              progress->totalRate / 1024.0);
   }
 
   return exitRequested ? 1 : 0;
@@ -300,17 +307,21 @@ int main(int argc, char **argv){
   char *descstring = NULL;
 
   static const struct option long_opts[] = {
-    {"size", required_argument, NULL, 's'},
-    {"id",   required_argument, NULL, 'i'},
-    {"help", no_argument,       NULL, 'h'},
-    {NULL,   no_argument,       NULL, 0}
+    {"verbose",  no_argument,        NULL, 'v'},
+    {"size",     required_argument,  NULL, 's'},
+    {"id",       required_argument,  NULL, 'i'},
+    {"help",     no_argument,        NULL, 'h'},
+    {NULL,       no_argument,        NULL, 0}
   };
 
   opterr = 0;
   int c;
   int option_index = 0;
-  while ((c = getopt_long(argc, argv, "s:i:h", long_opts, &option_index)) != -1)
+  while ((c = getopt_long(argc, argv, "vs:i:h", long_opts, &option_index)) != -1)
     switch (c) {
+      case 'v':
+        verbose++;
+        break;
       case 's': {
         long long int samples_wanted = parse_size(optarg);
         if (samples_wanted <= 0) {
@@ -355,7 +366,8 @@ int main(int argc, char **argv){
     /* Exactly one extra argument - file to write to. */
     outfile = argv[optind];
   } else {
-    printf("No file name given, will not save samples to file\n");
+    if (verbose)
+      printf("No file name given, will not save samples to file\n");
   }
 
   if ((ftdi = ftdi_new()) == 0){
@@ -423,7 +435,8 @@ int main(int argc, char **argv){
     fclose(outputFile);
     outputFile = NULL;
   }
-  printf("Capture ended.\n");
+  if (verbose)
+    printf("Capture ended.\n");
 
   /* Clean up. */
   if (ftdi_set_bitmode(ftdi, 0xff, BITMODE_RESET) < 0){
