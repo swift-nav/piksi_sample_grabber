@@ -17,8 +17,7 @@
  *             for normal operation. Should be used after running
  *             sample_grabber.
  *
- *   Usage :   Plug in device and run set_uart_mode. You may have to use
- *             sudo rmmod ftdi_sio first.
+ *   Usage :   Plug in device and run set_uart_mode.
  *
  *   Options : ./set_uart_mode [-v] [-i] [-h]
  *             [--verbose -v]  Print more verbose output.
@@ -122,28 +121,11 @@ int main(int argc, char *argv[])
         abort();
      }
 
-  DWORD num_devs;
   int iport = 0;
 
-  /* See how many devices are plugged in, fail if greater than 1 */
+  /* Try to open device using input PID, or our custom PID if no input. */
   if (verbose)
-    printf("Creating device info list\n");
-  ft_status = FT_CreateDeviceInfoList(&num_devs);
-  if (ft_status != FT_OK){
-    fprintf(stderr,"ERROR : Failed to create device info list, ft_status = %d\n",ft_status);
-    return EXIT_FAILURE;
-  }
-  if (verbose)
-    printf("Making sure only one FTDI device is plugged in (not counting virtual com ports).\n");
-  /* Check that there aren't more than 1 device plugged in */
-  if (num_devs > 1){
-    fprintf(stderr,"ERROR : More than one FTDI device plugged in\n");
-    return EXIT_FAILURE;
-  }
-
-  /* Try to open device using input PID, or default PID if no input. */
-  if (verbose)
-    printf("Trying VID=0x%04x, PID=0x%04x...", USB_CUSTOM_VID, pid);
+    printf("Trying to open with VID=0x%04x, PID=0x%04x...",USB_CUSTOM_VID,pid);
   ft_status = FT_SetVIDPID(USB_CUSTOM_VID, pid);
   if (ft_status != FT_OK){
     fprintf(stderr,"ERROR : Failed to set VID and PID, ft_status = %d\n",ft_status);
@@ -155,9 +137,11 @@ int main(int argc, char *argv[])
   if (ft_status != FT_OK){
     if (verbose)
       printf("FAILED\n");
-    fprintf(stderr,"ERROR : Failed to open device : ft_status = %d\nHave you tried (sudo rmmod ftdi_sio)?\n",ft_status);
+    fprintf(stderr,"ERROR : Failed to open device : ft_status = %d\n",ft_status);
     return EXIT_FAILURE;
   }
+  if (verbose)
+    printf("SUCCESS\n");
 
   /* Erase the EEPROM to set the device to UART mode. */
   if (verbose)
