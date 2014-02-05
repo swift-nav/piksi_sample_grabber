@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Swift Navigation Inc.
+ * Copyright (C) 2012-2014 Swift Navigation Inc.
  *
  * Contact: Fergus Noble <fergus@swift-nav.com>
  *          Colin Beighley <colin@swift-nav.com>
@@ -14,76 +14,115 @@
  *   "set_uart_mode.c"
  *
  *   Purpose : Erases EEPROM attached to FT232H to set the FT232H in UART mode
- *             for normal operation. Should be used after running 
+ *             for normal operation. Should be used after running
  *             sample_grabber.
  *
  *   Usage :   Plug in device and run set_uart_mode. You may have to use
  *             sudo rmmod ftdi_sio first.
  *
- *   Options : ./set_uart_mode [-p] [-v] [-h]
- *             [--prompt -p]    Don't prompt to confirm that device is correct.
- *             [--verbose -v]   Print more verbose output.
- *             [--help -h]      Print this information.
+ *   Options : ./set_uart_mode [-v] [-i] [-h]
+ *             [--verbose -v]  Print more verbose output.
+ *             [--id -i]       Product ID of Piksi to set into UART MODE.
+ *                               Default is 0x8398.
+ *                               Valid range 0x0001 to 0xFFFF.
+ *             [--help -h]     Print this information.
  */
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <getopt.h>
 
 #include "ftd2xx.h"
 
-/* Piksi custom FTDI PID */
+/* FTDI VID / Piksi custom PID. */
 #define USB_CUSTOM_VID 0x0403
 #define USB_CUSTOM_PID 0x8398
 
 FT_HANDLE ft_handle;
 FT_STATUS ft_status;
 int verbose = 0;
-int dont_prompt = 0;
+
+int pid = USB_CUSTOM_PID;
 
 void print_usage()
 {
-  printf("Usage: set_uart_mode [-p] [-v] [-h]\n"
+  printf("Usage: set_uart_mode [-v] [-i] [-h]\n"
          "Options:\n"
-         "  [--prompt -p]    Don't prompt to confirm that device is correct.\n"
-         "  [--verbose -v]   Print more verbose output.\n"
-         "  [--help -h]      Print this information.\n"
+         "  [--verbose -v]  Print more verbose output.\n"
+         "  [--id -i]       Product ID of Piksi to set into UART MODE.\n"
+         "                    Default is 0x8398.\n"
+         "                    Valid range 0x0001 to 0xFFFF.\n"
+         "  [--help -h]     Print this information.\n"
   );
+}
+
+/* Parse command line arg --id, USB Product ID.
+ * Input: PID in hex or decimal format, i.e. '0xFFFF' or '65535'.
+ *
+ * Returns 0x0001 to 0xFFFF as valid ID, or 0 for error.
+ */
+int parse_pid(char *arg) {
+  int pid = 0;
+
+  /* Find out if it is hex or decimal. Hex preceeded by '0x'. */
+  if ((arg[0] == '0') && (arg[1] == 'x')) {
+    /* Hexadecimal. */
+    /* Check if length is <= 6, i.e. '0xFFFF'. */
+    if (strlen(arg) > 6)
+      return 0;
+    pid = (int)strtol(arg+2, NULL, 16);
+  } else {
+    /* Decimal. */
+    /* Check if length is <= 5, i.e. '65535'. */
+    if (strlen(arg) > 5)
+      return 0;
+    pid = atoi(arg);
+  }
+
+  return pid;
 }
 
 int main(int argc, char *argv[])
 {
 
   static const struct option long_opts[] = {
-    {"prompt",     no_argument,       NULL, 'p'},
-    {"verbose",    no_argument,       NULL, 'v'},
-    {"help",       no_argument,       NULL, 'h'},
-    {NULL,         no_argument,       NULL, 0}
+    {"verbose",  no_argument,        NULL, 'v'},
+    {"help",     no_argument,        NULL, 'h'},
+    {"id",       required_argument,  NULL, 'i'},
+    {NULL,       no_argument,        NULL, 0}
   };
 
   opterr = 0;
   int c;
   int option_index = 0;
-  while ((c = getopt_long(argc, argv, "vph", long_opts, &option_index)) != -1)
+  while ((c = getopt_long(argc, argv, "vhi:", long_opts, &option_index)) != -1)
     switch (c) {
       case 'v':
         verbose++;
         break;
-      case 'p':
-        dont_prompt++;
-        break;
       case 'h':
         print_usage();
         return EXIT_SUCCESS;
+      case 'i': {
+        pid = parse_pid(optarg);
+        if (!pid) {
+          fprintf(stderr, "Invalid ID argument.\n");
+          return EXIT_FAILURE;
+        }
+        break;
+      }
       case '?':
-        fprintf(stderr, "Unknown option `-%c'.\n", optopt);
+        if (optopt == 'i')
+          fprintf(stderr, "ID argument requires an argument.\n");
+        else
+          fprintf(stderr, "Unknown option `-%c'.\n", optopt);
         return EXIT_FAILURE;
       default:
         abort();
      }
 
   DWORD num_devs;
-  DWORD VID, PID;
   int iport = 0;
 
   /* See how many devices are plugged in, fail if greater than 1 */
@@ -95,106 +134,32 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
   if (verbose)
-    printf("Making sure only one FTDI device is plugged in\n");
+    printf("Making sure only one FTDI device is plugged in (not counting virtual com ports).\n");
   /* Check that there aren't more than 1 device plugged in */
   if (num_devs > 1){
     fprintf(stderr,"ERROR : More than one FTDI device plugged in\n");
     return EXIT_FAILURE;
   }
-  
-  /* Get VID/PID from FTDI device */
+
+  /* Try to open device using input PID, or default PID if no input. */
   if (verbose)
-    printf("Getting VID/PID from device\n");
-  ft_status = FT_GetVIDPID(&VID,&PID);
-  if (ft_status != FT_OK){
-    fprintf(stderr,"ERROR : Failed to get VID and PID from FTDI device, ft_status = %d\n",ft_status);
-    return EXIT_FAILURE;
-  }
-  if (verbose)
-    printf("    VID = %04x, PID = %04x\n",VID,PID);
-  /* Set the VID/PID found */
-  if (verbose)
-    printf("Setting VID/PID\n");
-  ft_status = FT_SetVIDPID(VID,PID);
+    printf("Trying VID=0x%04x, PID=0x%04x...", USB_CUSTOM_VID, pid);
+  ft_status = FT_SetVIDPID(USB_CUSTOM_VID, pid);
   if (ft_status != FT_OK){
     fprintf(stderr,"ERROR : Failed to set VID and PID, ft_status = %d\n",ft_status);
     return EXIT_FAILURE;
   }
-
-  /* Get info about the device and print to user */
-  //FT_GetDeviceInfoDetail seems to not work very reliably
-  //DWORD lpdw_flags;
-  //DWORD lpdw_type;
-  //DWORD lpdw_id;
-  //char pc_serial_number[16];
-  //char pc_description[64];
-  //ft_status = FT_GetDeviceInfoDetail(0,&lpdw_flags,&lpdw_type,&lpdw_id,NULL,pc_serial_number,pc_description,&ft_handle);
-  //if (ft_status != FT_OK){
-  //  fprintf(stderr,"ERROR : Failed to get device info, ft_status = %d\n",ft_status);
-  //  return EXIT_FAILURE;
-  //}
-  //if (verbose || !dont_prompt){
-  //  printf("Device Information : \n");
-  //  printf("     Description   : %s\n", pc_description);
-  //  printf("     Serial Number : %s\n", pc_serial_number);
-  //  printf("     Flags         : 0x%x\n", lpdw_flags);
-  //  printf("     Type          : 0x%x\n", lpdw_type);
-  //  printf("     ID            : 0x%x\n", lpdw_id);
-  //}
-
-  /* Ask user if this is the correct device */
-  if (!dont_prompt) {
-    char correct_device;
-    printf("Is this the correct device? (y/n) : ");
-    scanf("%c",&correct_device);
-    while ((correct_device != 'y') && (correct_device != 'n')) {
-      printf("\rPlease enter y or n");
-      scanf("%c",&correct_device);
-    }
-    if (correct_device == 'n'){
-      printf("Exiting, since this is not the device we want to program\n");
-      return EXIT_SUCCESS;
-    }
-  }
-
-  /* Open the device */
-  if (verbose)
-    printf("Attempting to open device using read VID/PID...");
   ft_status = FT_Open(iport, &ft_handle);
-  /* If that didn't work, try some other likely VID/PID combos */
-  /* Try 0403:8398 */
-  if (ft_status != FT_OK){
-    if (verbose)
-      printf("FAILED\nTrying VID=0x0403, PID=0x8398...");
-    ft_status = FT_SetVIDPID(0x0403,0x8398);
-    if (ft_status != FT_OK){
-      fprintf(stderr,"ERROR : Failed to set VID and PID, ft_status = %d\n",ft_status);
-      return EXIT_FAILURE;
-    }
-    ft_status = FT_Open(iport, &ft_handle);
-  }
-  /* Try 0403:6014 */
-  if (ft_status != FT_OK){
-    if (verbose)
-      printf("FAILED\nTrying VID=0x0403, PID=0x6014...");
-    ft_status = FT_SetVIDPID(0x0403,0x6014);
-    if (ft_status != FT_OK){
-      fprintf(stderr,"ERROR : Failed to set VID and PID, ft_status = %d\n",ft_status);
-      return EXIT_FAILURE;
-    }
-    ft_status = FT_Open(iport, &ft_handle);
-  }
-  /* Exit program if we still haven't opened the device */
+
+  /* Exit program if we haven't opened the device. */
   if (ft_status != FT_OK){
     if (verbose)
       printf("FAILED\n");
     fprintf(stderr,"ERROR : Failed to open device : ft_status = %d\nHave you tried (sudo rmmod ftdi_sio)?\n",ft_status);
     return EXIT_FAILURE;
   }
-  if (verbose)
-    printf("SUCCESS\n");
-  
-  /* Erase the EEPROM to set the device to UART mode */
+
+  /* Erase the EEPROM to set the device to UART mode. */
   if (verbose)
     printf("Erasing device EEPROM\n");
   ft_status = FT_EraseEE(ft_handle);
@@ -203,7 +168,7 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  /* Reset the device */
+  /* Reset the device. */
   if (verbose)
     printf("Resetting device\n");
   ft_status = FT_ResetDevice(ft_handle);
@@ -212,7 +177,7 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  /* Close the device */
+  /* Close the device. */
   if (verbose)
     printf("Closing device\n");
   FT_Close(ft_handle);
