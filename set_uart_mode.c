@@ -170,6 +170,7 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  printf("Re-configuring for UART mode successful, please unplug and replug your device now\n");
+  if (verbose)
+    printf("Re-configuring for UART mode successful, please unplug and replug your device now\n");
   return EXIT_SUCCESS;
 }
