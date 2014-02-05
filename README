@@ -23,3 +23,28 @@ Dependencies : libftdi1 : for sample_grabber
                    We recommend installing these from source from the link.
                FTDI D2XX drivers : for set_uart_mode and set_fifo_mode
                    http://www.ftdichip.com/Drivers/D2XX.htm
+
+Note : Simultaneous sampling from multiple Piksies
+
+  In order to simultaneously sample from multiple Piksies, they must be
+  assigned different USB product ID's. The FTDI custom product ID for Piksi
+  is 0x8398, and this is the ID Piksi is assigned by set_fifo_mode by
+  default. If you want to simultaneously sample from another Piksi, it must be
+  assigned a different product ID. To do this, use the -i option with
+  set_fifo_mode, e.g. :
+
+      $ ./set_fifo_mode -v -i 0x8399
+
+  This will assign the Piksi the product ID 0x8399, instead of the default
+  0x8398. To collect samples from this Piksi, use sample_grabber with the
+  -i option, e.g. :
+
+      $ ./sample_grabber -v -s 100M -i 0x8399 my_sample_file.dat
+
+  After you finish sampling with this Piksi, you'll want to set it back into
+  UART mode for normal operation. set_uart_mode looks for a device with our
+  custom USB product ID 0x8398 by default, so you'll need to supply the -i
+  option to set_uart_mode to reset the Piksi with the modified id of 0x8399,
+  e.g. :
+
+      $ ./set_uart_mode -v -i 0x8399
