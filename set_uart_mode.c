@@ -46,7 +46,7 @@ int pid = USB_CUSTOM_PID;
 
 void print_usage()
 {
-  printf("Usage: set_uart_mode [-v] [-i] [-h]\n"
+  printf("Usage: set_uart_mode [-v] [-i pid] [-h]\n"
          "Options:\n"
          "  [--verbose -v]  Print more verbose output.\n"
          "  [--id -i]       Product ID of Piksi to set into UART MODE.\n"

@@ -52,7 +52,7 @@ FT_PROGRAM_DATA eeprom_data;
 
 void print_usage()
 {
-  printf("Usage: set_fifo_mode [-v] [-i] [-h]\n"
+  printf("Usage: set_fifo_mode [-v] [-i pid] [-h]\n"
          "Options:\n"
          "  [--verbose -v]  Print more verbose output.\n"
          "  [--id -i]       Product ID to assign to Piksi.\n"
