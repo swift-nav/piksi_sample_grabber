@@ -36,8 +36,9 @@ Note : Simultaneous sampling from multiple Piksies
       $ ./set_fifo_mode -v -i 0x8399
 
   This will assign the Piksi the product ID 0x8399, instead of the default
-  0x8398. To collect samples from this Piksi, use sample_grabber with the
-  -i option, e.g. :
+  0x8398. Note that you'll need to now add the new USB Product ID to your USB
+  permissions in /etc/udev/rules.d, or use sudo on the following commands. To
+  collect samples from this Piksi, use sample_grabber with the -i option, e.g. :
 
       $ ./sample_grabber -v -s 100M -i 0x8399 my_sample_file.dat
 
