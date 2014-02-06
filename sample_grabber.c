@@ -65,7 +65,7 @@
 /* Number of bytes to initially read out of device without saving to file. */
 #define NUM_FLUSH_BYTES 50000
 /* Number of samples in each byte received from the device. */
-#define SAMPLES_PER_BYTE 1
+#define SAMPLES_PER_BYTE 2
 /* Number of bytes to read out of pipe and write to disk at a time. */
 #define WRITE_SLICE_SIZE 2048
 /* Maximum number of elements in pipe - 0 means size is unconstrained. */
@@ -205,63 +205,46 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
   /*
    * Keep track of number of bytes read - don't record samples until we have
    * read a large number of bytes. We do this in order to flush out the FIFO's
-   * in the FT232H and FPGA to ensure that the samples we receive are continuous.
+   * in the FT232H and FPGA to ensure that the samples we receive are
+   * continuous.
    */
   static uint64_t total_num_bytes_received = 0;
 
   /* Array for packing received samples into. */
-  char *pack_buffer = (char *)malloc(length*SAMPLES_PER_BYTE*sizeof(char));
   if (length){
     if (total_num_bytes_received >= NUM_FLUSH_BYTES){
       if (outputFile) {
         /*
-         * Pack samples into buffer and write buffer to pipe. Data in pipe is
-         * written to disk in file_writing_thread.
-         * Format of each received byte is :
-         *   [7:4] : (MAX_I1, MAX_I0, MAX_Q1, MAX_Q0)
-         *   [3:1] : Unused
+         * Check each byte to see if a FIFO error occurred, and if not, write
+         * samples to disk.
+         * Format of received and saved bytes is :
+         *   [7:4] : Sample 0 (MAX_I1, MAX_I0, MAX_Q1)
+         *   [3:0] : Sample 1 (MAX_I1, MAX_I0, MAX_Q1)
+         *   [1]   : Unused
          *   [0]   : FPGA FIFO Error flag, active low. Usually indicates
          *           bytes are not being read out of FPGA FIFO quickly enough
          *           to avoid overflow.
-         * Format of packed samples is :
-         *   [7:4] : Sample 0 (I1, I0, Q1, Q0)
-         *   [3:0] : Sample 1 (I1, I0, Q1, Q0)
          * Note that sample_grabber doesn't know anything about the MAX2769's
          * output bit configuration - it just writes the received bits to disk.
          */
-        if ((length % 2) != 0) {
-          if (verbose)
-            printf("received callback with buffer length not an even number\n");
-          exitRequested = 1;
-        } else if (exitRequested != 1) {
-          /* Check byte to see if a FIFO error occured. */
-          for (uint64_t ci = 0; ci < length; ci++){
+        if (exitRequested != 1) {
+          /* Check each byte to see if a FIFO error occured. */
+          for (uint64_t ci = 0; ci < length; ci++)
             if (FPGA_FIFO_ERROR_CHECK(buffer[ci])) {
               if (verbose)
-                printf("FPGA FIFO Error Flag at sample number %lld\n",
+                fprintf(stderr,"FPGA FIFO Error Flag at sample number %lld\n",
                        (long long int)(total_unflushed_bytes+ci));
               exitRequested = 1;
               break;
             }
-          }
-          /* Pack samples into pack buffer. */
-          if (exitRequested != 1) {
-            for (uint64_t ci = 0; ci < length/2; ci++){
-              pack_buffer[ci] = (buffer[ci*2+0] & 0xF0) |
-                                ((buffer[ci*2+1]>>4) & 0x0F);
-            }
-            /* Push values into the pipe. */
-            pipe_push(pipe_writer,(void *)pack_buffer,length/2);
-          }
+          /* Push values into the pipe. */
+          pipe_push(pipe_writer,(void *)buffer,length/2);
         }
       }
       total_unflushed_bytes += length;
     }
     total_num_bytes_received += length;
   }
-
-  /* Free up pack_buffer's memory so we don't have a memory leak. */
-  free(pack_buffer);
 
   /* bytes_wanted = 0 means program was not run with a size argument. */
   if (bytes_wanted != 0 && total_unflushed_bytes >= bytes_wanted){
