@@ -238,7 +238,7 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
               break;
             }
           /* Push values into the pipe. */
-          pipe_push(pipe_writer,(void *)buffer,length/2);
+          pipe_push(pipe_writer,(void *)buffer,length);
         }
       }
       total_unflushed_bytes += length;
