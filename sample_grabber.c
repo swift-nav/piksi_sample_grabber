@@ -218,8 +218,8 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
          * Check each byte to see if a FIFO error occurred, and if not, write
          * samples to disk.
          * Format of received and saved bytes is :
-         *   [7:4] : Sample 0 (MAX_I1, MAX_I0, MAX_Q1)
-         *   [3:0] : Sample 1 (MAX_I1, MAX_I0, MAX_Q1)
+         *   [7:5] : Sample 0 (MAX_I1, MAX_I0, MAX_Q1)
+         *   [4:2] : Sample 1 (MAX_I1, MAX_I0, MAX_Q1)
          *   [1]   : Unused
          *   [0]   : FPGA FIFO Error flag, active low. Usually indicates
          *           bytes are not being read out of FPGA FIFO quickly enough
