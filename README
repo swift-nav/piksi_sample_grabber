@@ -18,7 +18,7 @@ Building : to build the programs run "make"
 Dependencies : libftdi1 : for sample_grabber
                    http://www.intra2net.com/en/developer/libftdi/download.php
                    libftdi1 has the following dependencies:
-                       libusb1.0
+                       libusb-1.0-0-dev
                        libconfuse
                    We recommend installing these from source from the link.
                FTDI D2XX drivers : for set_uart_mode and set_fifo_mode
