@@ -1,0 +1,11 @@
+#!/bin/bash
+mode=`lsusb | grep 0403 | sed 's/.*\(ID\) \([0-9a-f]*\):\([0-9a-f]*\).*/\3/'`
+if [ $mode == "6014" ]
+  then
+    echo "Already in the correct mode"
+    exit
+fi
+./set_uart_mode
+sleep 1s
+devFolder=`lsusb | grep 0403 | sed 's/Bus \([0-9]*\) Device \([0-9]*\).*/\1\/\2/'`
+./usbreset `echo "/dev/bus/usb/$devFolder"`
