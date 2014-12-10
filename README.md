@@ -9,7 +9,7 @@ libusb-1.0-0-dev: http://libusb.info/
 
 libconfuse: http://www.nongnu.org/confuse/
 
-We recommend installing these from source from the links.
+We recommend installing these from source from the links. You may need to restart your computer to make sure these kernel modules are running before using the binaries.
 
 #### FTDI D2XX drivers
 Dependency for set_uart_mode and set_fifo_mode
