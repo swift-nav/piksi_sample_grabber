@@ -1,9 +1,12 @@
-sample_grabber : Receives an arbitrary number of raw samples from the Piksi,
-                 using the onboard FT232H in FIFO mode. The FT232H on the Piksi
-                 must be set in FIFO mode before sample_grabber can be used -
-                 run set_fifo_mode to do this. After finishing using
-                 sample_grabber, use set_uart_mode to set the FT232H on the
-                 Piksi in UART mode for normal operation.
+Binaries:
+sample_grabber
+--------------
+Receives an arbitrary number of raw samples from the Piksi,
+using the onboard FT232H in FIFO mode. The FT232H on the Piksi
+must be set in FIFO mode before sample_grabber can be used -
+run set_fifo_mode to do this. After finishing using
+sample_grabber, use set_uart_mode to set the FT232H on the
+Piksi in UART mode for normal operation.
 
 set_fifo_mode : Writes settings to EEPROM attached to FT232H for synchronous
                 FIFO mode in order to stream raw samples from the RF frontend
