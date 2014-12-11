@@ -1,2 +1,4 @@
 *.o
 sample_grabber
+set_fifo_mode
+set_uart_mode
