@@ -32,7 +32,7 @@ You may need to unload the FTDI Virtual Com Port kernel module before doing this
     
 If using OSX, this is done via:
 
-    $ sudo kextunload -b com.apple.driver.AppleUSBFTDI
+    $ sudo kextunload -b com.FTDI.driver.FTDIUSBSerialDriver
 
 Unplug and replug your Piksi to reset the FTDI chip. Now collect samples by running sample_grabber. Note that you'll need to add the new USB Product ID to your USB permissions in /etc/udev/rules.d (if using Linux), or use sudo on the following commands.
 
