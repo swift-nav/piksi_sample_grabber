@@ -32,7 +32,7 @@ You may need to unload the FTDI Virtual Com Port kernel module before doing this
     
 If using OSX, this is done via:
 
-    $ sudo kextunload /Systems/Libraries/Extensions/IOUSBFamily.kext/Contents/PlugIns/AppleUSBFTDI.kext
+    $ sudo kextunload -b com.FTDI.driver.FTDIUSBSerialDriver
 
 Unplug and replug your Piksi to reset the FTDI chip. Now collect samples by running sample_grabber. Note that you'll need to add the new USB Product ID to your USB permissions in /etc/udev/rules.d (if using Linux), or use sudo on the following commands.
 
@@ -41,6 +41,10 @@ Unplug and replug your Piksi to reset the FTDI chip. Now collect samples by runn
 After you're finished collecting samples, put your Piksi back in UART mode via the following, and then unplugging and replugging the Piksi:
 
     $ sudo ./set_uart_mode -v
+
+If on OSX, you'll need to manually reload the virtual com port kernel module:
+
+    $ sudo kextload -b com.FTDI.driver.FTDIUSBSerialDriver
 
 ### Note : Simultaneous sampling from multiple Piksies
 In order to simultaneously sample from multiple Piksies, they must be assigned different USB product ID's. The FTDI custom product ID for Piksi is 0x8398, and this is the ID Piksi is assigned by set_fifo_mode by default. If you want to simultaneously sample from another Piksi, it must be assigned a different product ID. To do this, use the -i option with set_fifo_mode, e.g. :
