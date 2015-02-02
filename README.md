@@ -42,6 +42,10 @@ After you're finished collecting samples, put your Piksi back in UART mode via t
 
     $ sudo ./set_uart_mode -v
 
+If on OSX, you'll need to manually reload the virtual com port kernel module:
+
+    $ sudo kextload -b com.FTDI.driver.FTDIUSBSerialDriver
+
 ### Note : Simultaneous sampling from multiple Piksies
 In order to simultaneously sample from multiple Piksies, they must be assigned different USB product ID's. The FTDI custom product ID for Piksi is 0x8398, and this is the ID Piksi is assigned by set_fifo_mode by default. If you want to simultaneously sample from another Piksi, it must be assigned a different product ID. To do this, use the -i option with set_fifo_mode, e.g. :
 
