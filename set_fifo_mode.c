@@ -34,6 +34,7 @@
 #include <getopt.h>
 
 #include "ftd2xx.h"
+#include "libusb_hacks.h"
 
 /* FTDI VID / Piksi custom PID. */
 #define USB_CUSTOM_VID 0x0403
@@ -155,6 +156,7 @@ int main(int argc, char *argv[])
     fprintf(stderr,"ERROR : Failed to set VID and PID, ft_status = %d\n",ft_status);
     return EXIT_FAILURE;
   }
+  usb_detach_kernel_driver(USB_DEFAULT_VID, USB_DEFAULT_PID);
   ft_status = FT_Open(iport, &ft_handle);
   /* Exit program if we haven't opened the device. */
   if (ft_status != FT_OK){
@@ -218,5 +220,6 @@ int main(int argc, char *argv[])
   if (verbose)
     printf("Re-configuring for FIFO mode successful, please unplug and replug your device now.\n");
 
+  usb_reset_device(USB_DEFAULT_VID, USB_DEFAULT_PID);
   return EXIT_SUCCESS;
 }
