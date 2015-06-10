@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#define CHUNK_N 8192  // number of samples
+#define CHUNK_N 8192  // number of packed bytes
 
 int main(void) {
   static uint8_t inbuf[CHUNK_N * 8];
@@ -17,6 +17,6 @@ int main(void) {
       }
       outbuf[i] = pack;
     }
-    fwrite(outbuf, 1, CHUNK_N, stdout);
+    fwrite(outbuf, 1, n, stdout);
   }
 }
