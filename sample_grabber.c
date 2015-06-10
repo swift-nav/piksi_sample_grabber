@@ -69,7 +69,7 @@
 /* Number of bytes to read out of pipe and write to disk at a time. */
 #define WRITE_SLICE_SIZE 2048
 /* Maximum number of elements in pipe - 0 means size is unconstrained. */
-#define PIPE_SIZE 0
+#define PIPE_SIZE 0 //(512*1024*1024)
 
 /* FPGA FIFO Error Flag is 0th bit, active low. */
 #define FPGA_FIFO_ERROR_CHECK(byte) (!(byte & 0x01))
