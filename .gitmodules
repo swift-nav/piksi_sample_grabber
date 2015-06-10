@@ -1,0 +1,3 @@
+[submodule "pipe"]
+	path = pipe
+	url = https://github.com/cgaebel/pipe.git
