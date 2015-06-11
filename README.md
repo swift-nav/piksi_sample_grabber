@@ -69,3 +69,13 @@ Writes settings to EEPROM attached to FT232H for synchronous FIFO mode in order 
 
 #### set_uart_mode
 Erases EEPROM attached to FT232H to set the FT232H in UART mode for normal operation. Should be used after running sample_grabber.
+
+#### pack8
+Packs 1 sample per byte (sign MSB) to 8 samples per byte. Usage:
+
+    $ ./pack8 <1in.dat >8out.dat
+
+#### piksi_to_1bit
+Packs Piksi format (two 3-bit samples per byte) to 8 samples per byte. Usage:
+
+    $ ./piksi_to_1bit <piksiin.dat >8out.dat
