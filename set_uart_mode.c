@@ -33,6 +33,7 @@
 #include <getopt.h>
 
 #include "ftd2xx.h"
+#include "libusb_hacks.h"
 
 /* FTDI VID / Piksi custom PID. */
 #define USB_CUSTOM_VID 0x0403
@@ -172,5 +173,8 @@ int main(int argc, char *argv[])
 
   if (verbose)
     printf("Re-configuring for UART mode successful, please unplug and replug your device now\n");
+
+  usb_reset_device(USB_CUSTOM_VID, USB_CUSTOM_PID);
+
   return EXIT_SUCCESS;
 }

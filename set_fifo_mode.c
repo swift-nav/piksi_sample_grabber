@@ -34,6 +34,7 @@
 #include <getopt.h>
 
 #include "ftd2xx.h"
+#include "libusb_hacks.h"
 
 /* FTDI VID / Piksi custom PID. */
 #define USB_CUSTOM_VID 0x0403
@@ -155,6 +156,11 @@ int main(int argc, char *argv[])
     fprintf(stderr,"ERROR : Failed to set VID and PID, ft_status = %d\n",ft_status);
     return EXIT_FAILURE;
   }
+
+  #ifdef __linux
+    usb_detach_kernel_driver(USB_DEFAULT_VID, USB_DEFAULT_PID);
+  #endif
+
   ft_status = FT_Open(iport, &ft_handle);
   /* Exit program if we haven't opened the device. */
   if (ft_status != FT_OK){
@@ -162,7 +168,17 @@ int main(int argc, char *argv[])
       printf("FAILED\n");
     fprintf(stderr,"ERROR : Failed to open device : ft_status = %d\n", ft_status);
     if (ft_status == FT_DEVICE_NOT_OPENED)
-      fprintf(stderr,"Have you tried (sudo rmmod ftdi_sio)?\n");
+      #ifdef __linux
+        fprintf(stderr,
+        "Linux users: enter the following command " \
+        "and then run set_fifo_mode again:\n" \
+        "    sudo rmmod ftdi_sio\n");
+      #elif __APPLE__
+        fprintf(stderr,
+        "OSX users: enter the following command " \
+        "and then run set_fifo_mode again:\n" \
+        "    sudo kextunload -b com.FTDI.driver.FTDIUSBSerialDriver\n");
+      #endif
     return EXIT_FAILURE;
   }
   if (verbose)
@@ -218,5 +234,6 @@ int main(int argc, char *argv[])
   if (verbose)
     printf("Re-configuring for FIFO mode successful, please unplug and replug your device now.\n");
 
+  usb_reset_device(USB_DEFAULT_VID, USB_DEFAULT_PID);
   return EXIT_SUCCESS;
 }
