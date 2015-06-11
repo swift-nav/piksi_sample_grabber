@@ -156,7 +156,7 @@ int main(int argc, char *argv[])
     fprintf(stderr,"ERROR : Failed to set VID and PID, ft_status = %d\n",ft_status);
     return EXIT_FAILURE;
   }
-  usb_detach_kernel_driver(USB_DEFAULT_VID, USB_DEFAULT_PID);
+
   ft_status = FT_Open(iport, &ft_handle);
   /* Exit program if we haven't opened the device. */
   if (ft_status != FT_OK){
