@@ -157,6 +157,10 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
+  #ifdef __linux
+    usb_detach_kernel_driver(USB_DEFAULT_VID, USB_DEFAULT_PID);
+  #endif
+
   ft_status = FT_Open(iport, &ft_handle);
   /* Exit program if we haven't opened the device. */
   if (ft_status != FT_OK){
@@ -164,7 +168,17 @@ int main(int argc, char *argv[])
       printf("FAILED\n");
     fprintf(stderr,"ERROR : Failed to open device : ft_status = %d\n", ft_status);
     if (ft_status == FT_DEVICE_NOT_OPENED)
-      fprintf(stderr,"Have you tried (sudo rmmod ftdi_sio)?\n");
+      #ifdef __linux
+        fprintf(stderr,
+        "Linux users: enter the following command " \
+        "and then run set_fifo_mode again:\n" \
+        "    sudo rmmod ftdi_sio\n");
+      #elif __APPLE__
+        fprintf(stderr,
+        "OSX users: enter the following command " \
+        "and then run set_fifo_mode again:\n" \
+        "    sudo kextunload -b com.FTDI.driver.FTDIUSBSerialDriver\n");
+      #endif
     return EXIT_FAILURE;
   }
   if (verbose)
