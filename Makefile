@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -g -Werror -std=gnu99 -Iinclude `pkg-config libusb-1.0 --cflags`
+CFLAGS = -g -Wall -std=gnu99 -Iinclude `pkg-config libusb-1.0 --cflags`
 LDLIBS = `pkg-config libusb-1.0 --libs`
 
 all: set_fifo_mode set_uart_mode sample_grabber pack8 piksi_to_1bit
