@@ -67,7 +67,7 @@
 /* Number of samples in each byte received from the device. */
 #define SAMPLES_PER_BYTE 2
 /* Number of bytes to read out of pipe and write to disk at a time. */
-#define WRITE_SLICE_SIZE 2048
+#define WRITE_SLICE_SIZE 2048  // Should be multiple of 4
 /* Maximum number of elements in pipe - 0 means size is unconstrained. */
 #define PIPE_SIZE 0 //(512*1024*1024)
 
@@ -82,7 +82,7 @@ static FILE *outputFile = NULL;
 static int exitRequested = 0;
 
 int pid = USB_CUSTOM_PID;
-
+int pack_1bit = 0;
 int verbose = 0;
 
 /* Pipe structs and pointers. */
@@ -110,6 +110,7 @@ static void print_usage(void)
   "                    Default is 0x8398.\n"
   "                    Valid range 0x0001 to 0xFFFF.\n"
   "  [--help -h]     Print usage information and exit.\n"
+  "  [--onebit -1]   Convert samples to packed 1-bit format (MSB first)\n"
   "  [filename]      A filename to save samples to. If none is\n"
   "                  supplied then samples will not be saved.\n"
   "Note : set_fifo_mode must be run before sample_grabber to configure the FT232H\n"
@@ -270,10 +271,29 @@ static void* file_writer(void* pc_ptr){
   size_t bytes_read;
   while (!exitRequested){
     bytes_read = pipe_pop(reader,buf,WRITE_SLICE_SIZE);
-    if (bytes_read > 0){
-      if (fwrite(buf,bytes_read,1,outputFile) != 1){
-        perror("Write error\n");
-        exitRequested = 1;
+    if (bytes_read > 0) {
+      if (pack_1bit) {
+	uint8_t outbuf[WRITE_SLICE_SIZE/4];
+	const uint8_t *p = (uint8_t *)buf;
+	for (size_t i = 0; i < bytes_read/4; i++) {
+	  uint8_t pack = 0;
+	  for (int j = 0; j < 4; j++) {
+	    pack <<= 2;  // Will end up with first sample in MSB of packed output
+	    pack |= ((*p) & 0x80) >> 6;  // First sample sign in MSB of byte from piksi
+	    pack |= ((*p) & 0x10) >> 4;  // Second sample sign in bit 4
+	    p++;
+	  }
+	  outbuf[i] = pack;
+	}
+	if (fwrite(outbuf,bytes_read/4,1,outputFile) != 1){
+	  perror("Write error\n");
+	  exitRequested = 1;
+	}
+      } else {
+	if (fwrite(buf,bytes_read,1,outputFile) != 1){
+	  perror("Write error\n");
+	  exitRequested = 1;
+	}
       }
     }
   }
@@ -294,13 +314,14 @@ int main(int argc, char **argv){
     {"size",     required_argument,  NULL, 's'},
     {"id",       required_argument,  NULL, 'i'},
     {"help",     no_argument,        NULL, 'h'},
+    {"onebit",   no_argument,        NULL, '1'},
     {NULL,       no_argument,        NULL, 0}
   };
 
   opterr = 0;
   int c;
   int option_index = 0;
-  while ((c = getopt_long(argc, argv, "vs:i:h", long_opts, &option_index)) != -1)
+  while ((c = getopt_long(argc, argv, "vs:i:h1", long_opts, &option_index)) != -1)
     switch (c) {
       case 'v':
         verbose++;
@@ -329,6 +350,9 @@ int main(int argc, char **argv){
       case 'h':
         print_usage();
         return EXIT_SUCCESS;
+      case '1':
+	pack_1bit = 1;
+	break;
       case '?':
         if (optopt == 'i')
           fprintf(stderr, "ID argument requires an argument.\n");
