@@ -51,6 +51,7 @@
 #include <getopt.h>
 #include <signal.h>
 #include <errno.h>
+#include <time.h>
 #include <pthread.h>
 
 #include "ftdi.h"
@@ -66,8 +67,6 @@
 #define NUM_FLUSH_BYTES 50000
 /* Number of samples in each byte received from the device. */
 #define SAMPLES_PER_BYTE 2
-/* Number of bytes to read out of pipe and write to disk at a time. */
-#define WRITE_SLICE_SIZE 2048  // Should be multiple of 4
 /* Maximum number of elements in pipe - 0 means size is unconstrained. */
 #define PIPE_SIZE 0 //(512*1024*1024)
 
@@ -78,13 +77,19 @@ static uint64_t total_unflushed_bytes = 0;
 static long long int bytes_wanted = 0; /* 0 means uninitialized. */
 
 static FILE *outputFile = NULL;
+const char *output_filename;
 
 static int exitRequested = 0;
 
 int pid = USB_CUSTOM_PID;
 int pack_1bit = 0;
 int verbose = 0;
+int rotate_interval = 0;
 
+/* Number of bytes to read out of pipe and write to disk at a time. */
+size_t write_chunk = 1024*1024;
+
+  
 /* Pipe structs and pointers. */
 static pipe_t *sample_pipe;
 static pthread_t file_writing_thread;
@@ -99,7 +104,7 @@ static void sigintHandler(int signum)
 static void print_usage(void)
 {
   printf(
-  "Usage: ./sample_grabber [-s num] [-i pid] [-h] [filename]\n"
+  "Usage: ./sample_grabber [-s num] [-i pid] [-h] [-1] [-r] [-c SIZE] [filename]\n"
   "Options:\n"
   "  [--verbose -v]  Print more verbose output.\n"
   "  [--size -s]     Number of samples to collect before exiting.\n"
@@ -111,6 +116,10 @@ static void print_usage(void)
   "                    Valid range 0x0001 to 0xFFFF.\n"
   "  [--help -h]     Print usage information and exit.\n"
   "  [--onebit -1]   Convert samples to packed 1-bit format (MSB first)\n"
+  "  [--rotate -r]   Rotate files hourly for long-term archive\n"
+  "                  The system date and time will be appended to the filename.\n"
+  "  [--chunk -c SIZE]\n"
+  "                  Write file in chunks of SIZE (suffixes as above)\n"
   "  [filename]      A filename to save samples to. If none is\n"
   "                  supplied then samples will not be saved.\n"
   "Note : set_fifo_mode must be run before sample_grabber to configure the FT232H\n"
@@ -205,7 +214,7 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
 {
   /*
    * Keep track of number of bytes read - don't record samples until we have
-   * read a large number of bytes. We do this in order to flush out the FIFO's
+   * read a large number of bytes. We do this in order to flush out the FIFOs
    * in the FT232H and FPGA to ensure that the samples we receive are
    * continuous.
    */
@@ -267,15 +276,81 @@ static int readCallback(uint8_t *buffer, int length, FTDIProgressInfo *progress,
 
 static void* file_writer(void* pc_ptr){
   pipe_consumer_t* reader = pc_ptr;
-  char buf[WRITE_SLICE_SIZE];
-  size_t bytes_read;
+  uint8_t *pipebuf, *filebuf;
+  size_t pipe_chunk = pack_1bit ? write_chunk * 4 : write_chunk;
+
+  const char *filename_ext;
+  char filename[2222], timestr[22];
+  ssize_t basename_len = 0;
+
+  time_t t_prev = 0;
+  
+  pipebuf = filebuf = malloc(write_chunk);
+  if (pack_1bit)
+    pipebuf = malloc(pipe_chunk);
+
+  if (!pipebuf || !filebuf) {
+    fprintf(stderr, "Unable to allocate file write buffers\n");
+    exitRequested = 1;
+    return NULL;
+  }
+
+  if (rotate_interval) {
+    filename_ext = strrchr(output_filename, '.');
+    if (filename_ext) {
+      basename_len = filename_ext - output_filename;
+      if (sizeof(filename) - basename_len < 22)
+        basename_len = sizeof(filename) - 22; /* leave room for the date */
+      strncpy(filename, output_filename, basename_len);
+      filename[basename_len] = 0;
+    } else {
+      strncpy(filename, output_filename, sizeof(filename));
+      filename_ext = "";
+    }
+    t_prev = time(NULL);
+    strftime(timestr, sizeof(timestr), "%Y%m%d-%H%M%S",
+             localtime(&t_prev));
+    sprintf(&filename[basename_len], "-%s%s", timestr, filename_ext);
+    if (verbose)
+      printf("Rotating files every %d seconds, starting with %s\n",
+             rotate_interval, filename);
+  } else {
+    strncpy(filename, output_filename, sizeof(filename));
+  }
+
+  if ((outputFile = fopen(filename, "w")) == 0) {
+      fprintf(stderr,"Can't open output file %s, Error %s\n", filename,
+              strerror(errno));
+      exitRequested = 1;
+      return NULL;
+  }
+                                      
+  size_t bytes_read, bytes_to_write;
   while (!exitRequested){
-    bytes_read = pipe_pop(reader,buf,WRITE_SLICE_SIZE);
+    if (rotate_interval) {
+      time_t t = time(NULL);
+      if (t / rotate_interval != t_prev / rotate_interval) {
+        t_prev = t;
+        strftime(timestr, sizeof(timestr), "%Y%m%d-%H%M%S",
+             localtime(&t));
+        sprintf(&filename[basename_len], "-%s%s", timestr, filename_ext);
+        if (verbose)
+          printf("Rotating to new file %s\n", filename);
+        fclose(outputFile);
+        if ((outputFile = fopen(filename, "w")) == 0) {
+          fprintf(stderr,"Can't open output file %s, Error %s\n", filename,
+                  strerror(errno));
+          exitRequested = 1;
+          return NULL;
+        }
+      }
+    }
+    bytes_read = pipe_pop(reader, pipebuf, pipe_chunk);
     if (bytes_read > 0) {
       if (pack_1bit) {
-	uint8_t outbuf[WRITE_SLICE_SIZE/4];
-	const uint8_t *p = (uint8_t *)buf;
-	for (size_t i = 0; i < bytes_read/4; i++) {
+	const uint8_t *p = pipebuf;
+        bytes_to_write = bytes_read / 4;
+	for (size_t i = 0; i < bytes_to_write; i++) {
 	  uint8_t pack = 0;
 	  for (int j = 0; j < 4; j++) {
 	    pack <<= 2;  // Will end up with first sample in MSB of packed output
@@ -283,17 +358,14 @@ static void* file_writer(void* pc_ptr){
 	    pack |= ((*p) & 0x10) >> 4;  // Second sample sign in bit 4
 	    p++;
 	  }
-	  outbuf[i] = pack;
-	}
-	if (fwrite(outbuf,bytes_read/4,1,outputFile) != 1){
-	  perror("Write error\n");
-	  exitRequested = 1;
+	  filebuf[i] = pack;
 	}
       } else {
-	if (fwrite(buf,bytes_read,1,outputFile) != 1){
-	  perror("Write error\n");
-	  exitRequested = 1;
-	}
+        bytes_to_write = bytes_read;
+      }
+      if (fwrite(filebuf, bytes_to_write, 1, outputFile) != 1){
+        perror("Write error\n");
+        exitRequested = 1;
       }
     }
   }
@@ -303,10 +375,6 @@ static void* file_writer(void* pc_ptr){
 int main(int argc, char **argv){
   struct ftdi_context *ftdi;
   int err;
-  FILE *of = NULL;
-  char const *outfile = 0;
-  outputFile = 0;
-  exitRequested = 0;
   char *descstring = NULL;
 
   static const struct option long_opts[] = {
@@ -315,13 +383,15 @@ int main(int argc, char **argv){
     {"id",       required_argument,  NULL, 'i'},
     {"help",     no_argument,        NULL, 'h'},
     {"onebit",   no_argument,        NULL, '1'},
+    {"rotate",   optional_argument,  NULL, 'r'},
+    {"chunk",    required_argument,  NULL, 'c'},
     {NULL,       no_argument,        NULL, 0}
   };
 
   opterr = 0;
   int c;
   int option_index = 0;
-  while ((c = getopt_long(argc, argv, "vs:i:h1", long_opts, &option_index)) != -1)
+  while ((c = getopt_long(argc, argv, "vs:i:h1r::c:", long_opts, &option_index)) != -1)
     switch (c) {
       case 'v':
         verbose++;
@@ -339,6 +409,16 @@ int main(int argc, char **argv){
         }
         break;
       }
+      case 'c':
+        write_chunk = parse_size(optarg);
+        if (write_chunk <= 0) {
+          fprintf(stderr, "Invalid write chunk size argument.\n");
+          return EXIT_FAILURE;
+        }
+        break;
+      case 'r':
+        rotate_interval = optarg ? atoi(optarg) : 3600;
+        break;
       case 'i': {
         pid = parse_pid(optarg);
         if (!pid) {
@@ -371,7 +451,7 @@ int main(int argc, char **argv){
     print_usage();
   } else if (optind == argc - 1) {
     /* Exactly one extra argument - file to write to. */
-    outfile = argv[optind];
+    output_filename = argv[optind];
   } else {
     if (verbose)
       printf("No file name given, will not save samples to file\n");
@@ -406,16 +486,10 @@ int main(int argc, char **argv){
     fprintf(stderr,"Can't rx purge %s\n",ftdi_get_error_string(ftdi));
     return EXIT_FAILURE;
   }
-  if (outfile)
-    if ((of = fopen(outfile,"w+")) == 0)
-      fprintf(stderr,"Can't open logfile %s, Error %s\n", outfile, strerror(errno));
-  if (of)
-    if (setvbuf(of, NULL, _IOFBF , 1<<16) == 0)
-      outputFile = of;
   signal(SIGINT, sigintHandler);
 
   /* Only create pipe if we have a file to write samples to. */
-  if (outputFile) {
+  if (output_filename) {
     sample_pipe = pipe_new(sizeof(char),PIPE_SIZE);
     pipe_writer = pipe_producer_new(sample_pipe);
     pipe_reader = pipe_consumer_new(sample_pipe);
