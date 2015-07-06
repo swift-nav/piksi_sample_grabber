@@ -1,3 +1,10 @@
+# Known issues
+
+NAP firmwares >= 0.13 will occasionally (typically every few seconds)
+drop two samples when in raw sample streaming mode.  If this is a
+problem, use v0.12.  It will be corrected in a future NAP release.
+
+
 # Dependencies
 #### libftdi1
 Dependency for sample_grabber
