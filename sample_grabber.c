@@ -116,7 +116,8 @@ static void print_usage(void)
   "                    Valid range 0x0001 to 0xFFFF.\n"
   "  [--help -h]     Print usage information and exit.\n"
   "  [--onebit -1]   Convert samples to packed 1-bit format (MSB first)\n"
-  "  [--rotate -r]   Rotate files hourly for long-term archive\n"
+  "  [--rotate -r INTERVAL]\n"
+  "                  Rotate files every INTERVAL seconds for long-term archive\n"
   "                  The system date and time will be appended to the filename.\n"
   "  [--chunk -c SIZE]\n"
   "                  Write file in chunks of SIZE (suffixes as above)\n"
@@ -299,14 +300,14 @@ static void* file_writer(void* pc_ptr){
     filename_ext = strrchr(output_filename, '.');
     if (filename_ext) {
       basename_len = filename_ext - output_filename;
-      if (sizeof(filename) - basename_len < 22)
-        basename_len = sizeof(filename) - 22; /* leave room for the date */
-      strncpy(filename, output_filename, basename_len);
-      filename[basename_len] = 0;
     } else {
-      strncpy(filename, output_filename, sizeof(filename));
+      basename_len = strlen(output_filename);
       filename_ext = "";
     }
+    if (sizeof(filename) - basename_len < 22)
+        basename_len = sizeof(filename) - 22; /* leave room for the date */
+    strncpy(filename, output_filename, basename_len);
+    filename[basename_len] = 0;
     t_prev = time(NULL);
     strftime(timestr, sizeof(timestr), "%Y%m%d-%H%M%S",
              localtime(&t_prev));
