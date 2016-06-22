@@ -5,7 +5,7 @@ drop two samples when in raw sample streaming mode.  If this is a
 problem, use v0.12.  It will be corrected in a future NAP release.
 
 - The sample grabber only supports grabbing 1 bit samples. These are
-saved to disk in the `piksi` format as defined in [Peregrine](https://github.com/swift-nav/peregrine/blob/master/peregrine/samples.py). To convert to `1bit` format (8 samples per byte), use [piksi_to_1bit](#piksi_to_1bit). 
+saved to disk in the `piksi` format as defined in [Peregrine](https://github.com/swift-nav/peregrine/blob/master/peregrine/samples.py#L223). To convert to `1bit` format (8 samples per byte), use [piksi_to_1bit](#piksi_to_1bit). 
 
 
 #Dependencies
